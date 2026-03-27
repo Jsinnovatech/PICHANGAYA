@@ -1,0 +1,63 @@
+name: pichangaya
+description: Reserva tu cancha sintética — PichangaYa
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP Client (reemplaza Dio de las peticiones fetch del HTML)
+  dio: ^5.7.0
+
+  # Estado (reemplaza STATE y SESSION del HTML)
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # Token JWT seguro (reemplaza SESSION en memoria)
+  flutter_secure_storage: ^9.2.2
+
+  # Mapa (reemplaza Leaflet.js + OpenStreetMap del HTML)
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # GPS (reemplaza navigator.geolocation del HTML)
+  geolocator: ^13.0.1
+
+  # Imágenes / Voucher (reemplaza file input + FileReader del HTML)
+  image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
+
+  # Fuentes (reemplaza Google Fonts del HTML: Bebas Neue + DM Sans)
+  google_fonts: ^6.2.1
+
+  # Navegación entre pantallas (reemplaza showScreen() del HTML)
+  go_router: ^14.3.0
+
+  # Formato fechas / horas
+  intl: ^0.19.0
+
+  # UUIDs para IDs
+  uuid: ^4.5.1
+
+  # WebSocket (reemplaza los timers en tiempo real del admin)
+  web_socket_channel: ^3.0.1
+
+  # Igualdad en modelos
+  equatable: ^2.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.4.3
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/

@@ -1,0 +1,23 @@
+PARA LEVANATR EL BACKEND DE PICHANGAYA
+
+venv\Scripts\activate
+uvicorn app.main:app --reload --port 8000
+
+
+
+
+MEJORAS PARA EL ARTEFACTO EN HTML PICHANGAYA.
+
+ya cumpa antes de quiero que tengas en cuenta algo que el login tendra 3 roles el super admin, admin y cliente,
+ al loguearte con el super admin tendremos un dashoboard de cantidad de campos deportivos registrados, clientes, 
+pagos de suscripcion y fecha de pago de pago suscriptor fecha de venciomiento si en caso no pago de le restringue 
+el uso del app, total de recauddado por mes estadisticas, y demas cosas relacionadas al app, asi mismo al ingresar 
+al rol de admin hay que agregar un tab al lado derecho asi como salen los demas tab donde sea suscripcion y al ingresar
+le de dos opciones con  facturacion electrónica el costo sera de 50 mensual y con entrega de boleta simple  els costo
+sera de 30, al hacer clip el admin podra hacer su pago de suscripcion en la cual podra ser por yape, plin o pago por 
+trasnfereancia y podra subir su captura del pago, este llegara al super admin verificado el pago este activara al admin 
+para el uso de la app, me ha comprendido cumpa vamos a hacer estas mejoras.
+si cumpa un ultimo pedido hay que mandarle una notificacion que saldra en el app cuando el admin se suscribe y le avisa 
+al super admin para que verifique y acepte asi mismo cuando ya se  haya aceptado, rechazado al admin para que sepa, igual
+ la misma logica cuando el cliente reserva le ebe llegar al admin una notificacion y cuando acepta la reserva tb le debe 
+llegar una notificacion de que su reserva ya esta hecha.
