@@ -1,11 +1,22 @@
-class ApiConstants {
-  // Cambiar según ambiente
-  // static const String baseUrl = 'http://10.0.2.2:8000/api/v1'; // Android emulator
-  static const String baseUrl =
-      'http://localhost:8000/api/v1'; // Chrome / desarrollo web
-  // static const String baseUrl = 'https://pichangaya.railway.app/api/v1'; // Producción
+import 'package:flutter/foundation.dart';
 
-  static const String wsTimers = 'ws://localhost:8000/ws/timers';
+class ApiConstants {
+  // Detecta automaticamente si es web (Chrome) o Android emulator
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:8000/api/v1';
+    } else {
+      return 'http://10.0.2.2:8000/api/v1';
+    }
+  }
+
+  static String get wsTimers {
+    if (kIsWeb) {
+      return 'ws://localhost:8000/ws/timers';
+    } else {
+      return 'ws://10.0.2.2:8000/ws/timers';
+    }
+  }
 
   // Auth
   static const String register = '/auth/register';
@@ -31,7 +42,7 @@ class ApiConstants {
   static const String adminDashboard = '/admin/dashboard';
   static const String adminVerificarPago = '/admin/pagos/{id}/verificar';
 
-  // Suscripción
+  // Suscripcion
   static const String miSuscripcion = '/suscripcion/mi-suscripcion';
   static const String pagarSuscripcion = '/suscripcion/pagar';
 
