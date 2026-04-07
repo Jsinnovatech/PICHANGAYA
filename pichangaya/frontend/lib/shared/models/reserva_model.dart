@@ -1,27 +1,22 @@
-/// Equivale a RESERVAS[] del HTML
 class ReservaModel {
   final String id;
   final String codigo;
-  final String clienteId;
-  final String clienteNombre;
-  final String canchaId;
   final String? canchaNombre;
-  final String fecha;       // 'YYYY-MM-DD'
-  final String horaInicio;  // 'HH:MM'
+  final String? localNombre;
+  final String fecha;
+  final String horaInicio;
   final String horaFin;
   final double precioTotal;
-  final String estado;      // 'pending'|'confirmed'|'active'|'done'|'canceled'
-  final String? tipoDoc;    // 'boleta'|'factura'
-  final String? metodoPago; // 'yape'|'plin'|'transferencia'|'efectivo'
+  final String estado;
+  final String? tipoDoc;
+  final String? metodoPago;
   final String? serieFact;
 
   const ReservaModel({
     required this.id,
     required this.codigo,
-    required this.clienteId,
-    required this.clienteNombre,
-    required this.canchaId,
     this.canchaNombre,
+    this.localNombre,
     required this.fecha,
     required this.horaInicio,
     required this.horaFin,
@@ -35,10 +30,8 @@ class ReservaModel {
   factory ReservaModel.fromJson(Map<String, dynamic> j) => ReservaModel(
         id: j['id'],
         codigo: j['codigo'] ?? j['id'],
-        clienteId: j['cliente_id'],
-        clienteNombre: j['cliente_nombre'] ?? '',
-        canchaId: j['cancha_id'],
         canchaNombre: j['cancha_nombre'],
+        localNombre: j['local_nombre'],
         fecha: j['fecha'],
         horaInicio: j['hora_inicio'],
         horaFin: j['hora_fin'],

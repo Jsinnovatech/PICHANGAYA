@@ -1,4 +1,3 @@
-/// Equivale a LOCALES[] del HTML
 class LocalModel {
   final String id;
   final String nombre;
@@ -7,7 +6,9 @@ class LocalModel {
   final double lng;
   final String? telefono;
   final String? fotoUrl;
-  final double? distanciaKm; // calculado en backend con Haversine
+  final double? distanciaKm;
+  final int? numCanchas;
+  final double? precioDesde;
 
   const LocalModel({
     required this.id,
@@ -18,6 +19,8 @@ class LocalModel {
     this.telefono,
     this.fotoUrl,
     this.distanciaKm,
+    this.numCanchas,
+    this.precioDesde,
   });
 
   factory LocalModel.fromJson(Map<String, dynamic> j) => LocalModel(
@@ -28,6 +31,13 @@ class LocalModel {
         lng: (j['lng'] as num).toDouble(),
         telefono: j['telefono'],
         fotoUrl: j['foto_url'],
-        distanciaKm: j['distancia_km'] != null ? (j['distancia_km'] as num).toDouble() : null,
+        distanciaKm: j['distancia_km'] != null
+            ? (j['distancia_km'] as num).toDouble()
+            : null,
+        numCanchas:
+            j['num_canchas'] != null ? (j['num_canchas'] as num).toInt() : null,
+        precioDesde: j['precio_desde'] != null
+            ? (j['precio_desde'] as num).toDouble()
+            : null,
       );
 }

@@ -12,9 +12,11 @@ from app.models.pago import Pago, EstadoPagoEnum
 from app.models.user import User, RolEnum
 from app.models.cancha import Cancha
 from app.models.local import Local
+from app.models.horario import HorarioDisponible
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
 # ══════════════════════════════════════════════
 # SCHEMAS
 # ══════════════════════════════════════════════
@@ -80,6 +82,38 @@ class CambiarEstadoReservaRequest(BaseModel):
     notas: Optional[str] = None
 
 
+class CrearCanchaRequest(BaseModel):
+    local_id: uuid.UUID
+    nombre: str
+    capacidad: int = 10
+    precio_hora: float
+    superficie: Optional[str] = "Gras Sintético"
+    descripcion: Optional[str] = None
+
+
+# ══════════════════════════════════════════════
+# HELPER — obtener local del admin
+# ══════════════════════════════════════════════
+
+async def _get_local_del_admin(admin_id: str, db: AsyncSession) -> Optional[Local]:
+    """Retorna el local cuyo admin_id coincide con el admin logueado."""
+    result = await db.execute(
+        select(Local).where(Local.admin_id == uuid.UUID(admin_id))
+    )
+    return result.scalar_one_or_none()
+
+
+async def _get_canchas_del_admin(admin_id: str, db: AsyncSession) -> List[Cancha]:
+    """Retorna todas las canchas del local del admin."""
+    local = await _get_local_del_admin(admin_id, db)
+    if not local:
+        return []
+    result = await db.execute(
+        select(Cancha).where(Cancha.local_id == local.id)
+    )
+    return list(result.scalars().all())
+
+
 # ══════════════════════════════════════════════
 # DASHBOARD
 # ══════════════════════════════════════════════
@@ -92,62 +126,86 @@ async def admin_dashboard(
     from datetime import datetime, timezone
     hoy = datetime.now(timezone.utc).date()
 
-    reservas_hoy_result = await db.execute(
-        select(func.count(Reserva.id)).where(Reserva.fecha == hoy)
-    )
-    reservas_hoy = reservas_hoy_result.scalar() or 0
+    # Solo canchas del admin
+    canchas = await _get_canchas_del_admin(current_user["id"], db)
+    cancha_ids = [c.id for c in canchas]
 
-    pendientes_result = await db.execute(
-        select(func.count(Reserva.id)).where(Reserva.estado == EstadoReservaEnum.pending)
-    )
-    reservas_pendientes = pendientes_result.scalar() or 0
-
-    ingresos_result = await db.execute(
-        select(func.sum(Pago.monto)).where(
-            Pago.estado == EstadoPagoEnum.verificado,
-            func.date(Pago.created_at) == hoy
+    if cancha_ids:
+        reservas_hoy_result = await db.execute(
+            select(func.count(Reserva.id)).where(
+                Reserva.fecha == hoy,
+                Reserva.cancha_id.in_(cancha_ids)
+            )
         )
-    )
-    ingresos_hoy = float(ingresos_result.scalar() or 0)
+        pendientes_result = await db.execute(
+            select(func.count(Reserva.id)).where(
+                Reserva.estado == EstadoReservaEnum.pending,
+                Reserva.cancha_id.in_(cancha_ids)
+            )
+        )
+        ingresos_result = await db.execute(
+            select(func.sum(Pago.monto)).where(
+                Pago.estado == EstadoPagoEnum.verificado,
+                func.date(Pago.created_at) == hoy,
+                Pago.reserva_id.in_(
+                    select(Reserva.id).where(Reserva.cancha_id.in_(cancha_ids))
+                )
+            )
+        )
+        pagos_result = await db.execute(
+            select(func.count(Pago.id)).where(
+                Pago.estado == EstadoPagoEnum.pendiente,
+                Pago.reserva_id.in_(
+                    select(Reserva.id).where(Reserva.cancha_id.in_(cancha_ids))
+                )
+            )
+        )
+        ultimas_result = await db.execute(
+            select(Reserva).where(
+                Reserva.cancha_id.in_(cancha_ids)
+            ).order_by(Reserva.created_at.desc()).limit(5)
+        )
+    else:
+        reservas_hoy_result = await db.execute(select(func.count(Reserva.id)).where(Reserva.fecha == hoy))
+        pendientes_result   = await db.execute(select(func.count(Reserva.id)).where(Reserva.estado == EstadoReservaEnum.pending))
+        ingresos_result     = await db.execute(select(func.sum(Pago.monto)).where(Pago.estado == EstadoPagoEnum.verificado, func.date(Pago.created_at) == hoy))
+        pagos_result        = await db.execute(select(func.count(Pago.id)).where(Pago.estado == EstadoPagoEnum.pendiente))
+        ultimas_result      = await db.execute(select(Reserva).order_by(Reserva.created_at.desc()).limit(5))
+
+    reservas_hoy      = reservas_hoy_result.scalar() or 0
+    reservas_pend     = pendientes_result.scalar() or 0
+    ingresos_hoy      = float(ingresos_result.scalar() or 0)
+    pagos_pendientes  = pagos_result.scalar() or 0
+    ultimas_reservas  = ultimas_result.scalars().all()
 
     clientes_result = await db.execute(
         select(func.count(User.id)).where(User.rol == RolEnum.cliente, User.activo == True)
     )
     total_clientes = clientes_result.scalar() or 0
 
-    pagos_pendientes_result = await db.execute(
-        select(func.count(Pago.id)).where(Pago.estado == EstadoPagoEnum.pendiente)
-    )
-    pagos_pendientes = pagos_pendientes_result.scalar() or 0
-
-    ultimas_result = await db.execute(
-        select(Reserva).order_by(Reserva.created_at.desc()).limit(5)
-    )
-    ultimas_reservas = ultimas_result.scalars().all()
-
     ultimas_lista = []
     for r in ultimas_reservas:
         cliente_r = await db.execute(select(User).where(User.id == r.cliente_id))
-        cliente = cliente_r.scalar_one_or_none()
-        cancha_r = await db.execute(select(Cancha).where(Cancha.id == r.cancha_id))
-        cancha = cancha_r.scalar_one_or_none()
+        cliente   = cliente_r.scalar_one_or_none()
+        cancha_r  = await db.execute(select(Cancha).where(Cancha.id == r.cancha_id))
+        cancha    = cancha_r.scalar_one_or_none()
         ultimas_lista.append({
-            "codigo": r.codigo,
+            "codigo":  r.codigo,
             "cliente": cliente.nombre if cliente else "—",
-            "cancha": cancha.nombre if cancha else "—",
-            "fecha": str(r.fecha),
-            "hora": str(r.hora_inicio)[:5],
-            "estado": r.estado.value,
-            "monto": float(r.precio_total)
+            "cancha":  cancha.nombre if cancha else "—",
+            "fecha":   str(r.fecha),
+            "hora":    str(r.hora_inicio)[:5],
+            "estado":  r.estado.value,
+            "monto":   float(r.precio_total)
         })
 
     return {
         "stats": {
-            "reservas_hoy": reservas_hoy,
-            "reservas_pendientes": reservas_pendientes,
-            "ingresos_hoy": ingresos_hoy,
-            "total_clientes": total_clientes,
-            "pagos_pendientes": pagos_pendientes
+            "reservas_hoy":        reservas_hoy,
+            "reservas_pendientes": reservas_pend,
+            "ingresos_hoy":        ingresos_hoy,
+            "total_clientes":      total_clientes,
+            "pagos_pendientes":    pagos_pendientes,
         },
         "ultimas_reservas": ultimas_lista
     }
@@ -164,40 +222,39 @@ async def admin_get_reservas(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    canchas = await _get_canchas_del_admin(current_user["id"], db)
+    cancha_ids = [c.id for c in canchas]
+
     query = select(Reserva).order_by(Reserva.created_at.desc())
+    if cancha_ids:
+        query = query.where(Reserva.cancha_id.in_(cancha_ids))
 
     if estado:
         try:
-            estado_enum = EstadoReservaEnum(estado)
-            query = query.where(Reserva.estado == estado_enum)
+            query = query.where(Reserva.estado == EstadoReservaEnum(estado))
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Estado inválido: {estado}")
-
     if fecha:
         query = query.where(Reserva.fecha == fecha)
 
-    result = await db.execute(query)
+    result   = await db.execute(query)
     reservas = result.scalars().all()
 
     respuesta = []
     for reserva in reservas:
-        cliente_result = await db.execute(select(User).where(User.id == reserva.cliente_id))
-        cliente = cliente_result.scalar_one_or_none()
-
-        cancha_result = await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))
-        cancha = cancha_result.scalar_one_or_none()
-
+        cliente_r = await db.execute(select(User).where(User.id == reserva.cliente_id))
+        cliente   = cliente_r.scalar_one_or_none()
+        cancha_r  = await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))
+        cancha    = cancha_r.scalar_one_or_none()
         local = None
         if cancha:
-            local_result = await db.execute(select(Local).where(Local.id == cancha.local_id))
-            local = local_result.scalar_one_or_none()
-
-        pago_result = await db.execute(select(Pago).where(Pago.reserva_id == reserva.id))
-        pago = pago_result.scalar_one_or_none()
+            local_r = await db.execute(select(Local).where(Local.id == cancha.local_id))
+            local   = local_r.scalar_one_or_none()
+        pago_r = await db.execute(select(Pago).where(Pago.reserva_id == reserva.id))
+        pago   = pago_r.scalar_one_or_none()
 
         respuesta.append(ReservaAdminResponse(
-            id=reserva.id,
-            codigo=reserva.codigo,
+            id=reserva.id, codigo=reserva.codigo,
             cliente_nombre=cliente.nombre if cliente else "Desconocido",
             cliente_celular=cliente.celular if cliente else "",
             cancha_nombre=cancha.nombre if cancha else None,
@@ -213,7 +270,6 @@ async def admin_get_reservas(
             pago_estado=pago.estado.value if pago else None,
             pago_id=pago.id if pago else None
         ))
-
     return respuesta
 
 
@@ -224,29 +280,18 @@ async def admin_cambiar_estado_reserva(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Reserva).where(Reserva.id == reserva_id))
+    result  = await db.execute(select(Reserva).where(Reserva.id == reserva_id))
     reserva = result.scalar_one_or_none()
-
     if not reserva:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
-
     try:
-        nuevo_estado = EstadoReservaEnum(data.estado)
+        reserva.estado = EstadoReservaEnum(data.estado)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Estado inválido: {data.estado}")
-
-    reserva.estado = nuevo_estado
     if data.notas:
         reserva.notas = data.notas
-
     await db.commit()
-    await db.refresh(reserva)
-
-    return {
-        "mensaje": f"Reserva {reserva.codigo} actualizada a {nuevo_estado.value}",
-        "reserva_id": str(reserva.id),
-        "nuevo_estado": nuevo_estado.value
-    }
+    return {"mensaje": f"Reserva actualizada", "nuevo_estado": reserva.estado.value}
 
 
 # ══════════════════════════════════════════════
@@ -259,39 +304,40 @@ async def admin_get_pagos(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Pago).order_by(Pago.created_at.desc())
+    canchas    = await _get_canchas_del_admin(current_user["id"], db)
+    cancha_ids = [c.id for c in canchas]
 
+    query = select(Pago).order_by(Pago.created_at.desc())
+    if cancha_ids:
+        query = query.where(
+            Pago.reserva_id.in_(
+                select(Reserva.id).where(Reserva.cancha_id.in_(cancha_ids))
+            )
+        )
     if estado:
         try:
-            estado_enum = EstadoPagoEnum(estado)
-            query = query.where(Pago.estado == estado_enum)
+            query = query.where(Pago.estado == EstadoPagoEnum(estado))
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Estado inválido: {estado}")
 
     result = await db.execute(query)
-    pagos = result.scalars().all()
+    pagos  = result.scalars().all()
 
     respuesta = []
     for pago in pagos:
-        cliente_result = await db.execute(select(User).where(User.id == pago.cliente_id))
-        cliente = cliente_result.scalar_one_or_none()
-
-        reserva_result = await db.execute(select(Reserva).where(Reserva.id == pago.reserva_id))
-        reserva = reserva_result.scalar_one_or_none()
-
+        cliente_r = await db.execute(select(User).where(User.id == pago.cliente_id))
+        cliente   = cliente_r.scalar_one_or_none()
+        reserva_r = await db.execute(select(Reserva).where(Reserva.id == pago.reserva_id))
+        reserva   = reserva_r.scalar_one_or_none()
         respuesta.append(PagoAdminResponse(
-            id=pago.id,
-            reserva_id=pago.reserva_id,
+            id=pago.id, reserva_id=pago.reserva_id,
             reserva_codigo=reserva.codigo if reserva else None,
             cliente_nombre=cliente.nombre if cliente else None,
             cliente_celular=cliente.celular if cliente else None,
-            monto=float(pago.monto),
-            metodo=pago.metodo.value,
-            estado=pago.estado.value,
-            voucher_url=pago.voucher_url,
+            monto=float(pago.monto), metodo=pago.metodo.value,
+            estado=pago.estado.value, voucher_url=pago.voucher_url,
             fecha=str(pago.created_at.date()) if pago.created_at else None
         ))
-
     return respuesta
 
 
@@ -303,35 +349,31 @@ async def admin_verificar_pago(
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Pago).where(Pago.id == pago_id))
-    pago = result.scalar_one_or_none()
-
+    pago   = result.scalar_one_or_none()
     if not pago:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
 
-    reserva_result = await db.execute(select(Reserva).where(Reserva.id == pago.reserva_id))
-    reserva = reserva_result.scalar_one_or_none()
+    reserva_r = await db.execute(select(Reserva).where(Reserva.id == pago.reserva_id))
+    reserva   = reserva_r.scalar_one_or_none()
 
     if data.accion == "aprobar":
         pago.estado = EstadoPagoEnum.verificado
         pago.verificado_por = uuid.UUID(current_user["id"])
         if reserva:
             reserva.estado = EstadoReservaEnum.confirmed
-        mensaje = f"Pago aprobado — Reserva {reserva.codigo if reserva else ''} confirmada"
-
+        mensaje = f"Pago aprobado"
     elif data.accion == "rechazar":
         pago.estado = EstadoPagoEnum.rechazado
         if reserva:
             reserva.estado = EstadoReservaEnum.canceled
             if data.motivo:
                 reserva.notas = f"Pago rechazado: {data.motivo}"
-        mensaje = "Pago rechazado — Reserva cancelada"
-
+        mensaje = "Pago rechazado"
     else:
-        raise HTTPException(status_code=400, detail="Acción inválida. Use 'aprobar' o 'rechazar'")
+        raise HTTPException(status_code=400, detail="Acción inválida")
 
     await db.commit()
-
-    return {"mensaje": mensaje, "pago_id": str(pago_id), "accion": data.accion}
+    return {"mensaje": mensaje, "pago_id": str(pago_id)}
 
 
 # ══════════════════════════════════════════════
@@ -343,36 +385,22 @@ async def admin_get_clientes(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(
+    result   = await db.execute(
         select(User).where(User.rol == RolEnum.cliente).order_by(User.created_at.desc())
     )
     clientes = result.scalars().all()
 
     respuesta = []
     for cliente in clientes:
-        reservas_result = await db.execute(
-            select(func.count(Reserva.id)).where(Reserva.cliente_id == cliente.id)
-        )
-        total_reservas = reservas_result.scalar() or 0
-
-        pagos_result = await db.execute(
-            select(func.sum(Pago.monto)).where(
-                Pago.cliente_id == cliente.id,
-                Pago.estado == EstadoPagoEnum.verificado
-            )
-        )
-        total_gastado = float(pagos_result.scalar() or 0)
-
+        res_r  = await db.execute(select(func.count(Reserva.id)).where(Reserva.cliente_id == cliente.id))
+        pago_r = await db.execute(select(func.sum(Pago.monto)).where(
+            Pago.cliente_id == cliente.id, Pago.estado == EstadoPagoEnum.verificado))
         respuesta.append(ClienteAdminResponse(
-            id=cliente.id,
-            nombre=cliente.nombre,
-            celular=cliente.celular,
-            dni=cliente.dni,
-            activo=cliente.activo,
-            total_reservas=total_reservas,
-            total_gastado=total_gastado
+            id=cliente.id, nombre=cliente.nombre, celular=cliente.celular,
+            dni=cliente.dni, activo=cliente.activo,
+            total_reservas=res_r.scalar() or 0,
+            total_gastado=float(pago_r.scalar() or 0)
         ))
-
     return respuesta
 
 
@@ -382,18 +410,95 @@ async def admin_toggle_cliente(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(
-        select(User).where(User.id == cliente_id, User.rol == RolEnum.cliente)
-    )
+    result  = await db.execute(select(User).where(User.id == cliente_id, User.rol == RolEnum.cliente))
     cliente = result.scalar_one_or_none()
-
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
-
     cliente.activo = not cliente.activo
     await db.commit()
+    return {"mensaje": f"Cliente {'activado' if cliente.activo else 'desactivado'}", "activo": cliente.activo}
 
-    return {
-        "mensaje": f"Cliente {cliente.nombre} {'activado' if cliente.activo else 'desactivado'}",
-        "activo": cliente.activo
-    }
+
+# ══════════════════════════════════════════════
+# CANCHAS — solo del local del admin
+# ══════════════════════════════════════════════
+
+@router.get("/mis-canchas")
+async def admin_get_mis_canchas(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Canchas del local que pertenece a este admin."""
+    local = await _get_local_del_admin(current_user["id"], db)
+    if not local:
+        return []
+
+    result  = await db.execute(select(Cancha).where(Cancha.local_id == local.id))
+    canchas = result.scalars().all()
+
+    return [{
+        "id":           str(c.id),
+        "local_id":     str(c.local_id),
+        "local_nombre": local.nombre,
+        "nombre":       c.nombre,
+        "capacidad":    c.capacidad,
+        "precio_hora":  float(c.precio_hora),
+        "superficie":   c.superficie,
+        "activa":       c.activa,
+    } for c in canchas]
+
+
+@router.post("/canchas")
+async def admin_crear_cancha(
+    data: CrearCanchaRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    # Verificar que el local pertenece a este admin
+    local_r = await db.execute(select(Local).where(Local.id == data.local_id))
+    local   = local_r.scalar_one_or_none()
+    if not local:
+        raise HTTPException(status_code=404, detail="Local no encontrado")
+
+    # Si el local tiene admin_id y no coincide, rechazar
+    if local.admin_id and str(local.admin_id) != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Este local no te pertenece")
+
+    cancha = Cancha(
+        id=uuid.uuid4(), local_id=data.local_id,
+        nombre=data.nombre, capacidad=data.capacidad,
+        precio_hora=data.precio_hora, superficie=data.superficie,
+        descripcion=data.descripcion, activa=True,
+    )
+    db.add(cancha)
+    await db.flush()
+
+    from datetime import time
+    horarios = []
+    for dia in range(7):
+        for h in range(7, 22):
+            horarios.append(HorarioDisponible(
+                id=uuid.uuid4(), cancha_id=cancha.id,
+                dia_semana=dia, hora_inicio=time(h, 0),
+                hora_fin=time(h + 1, 0), activo=True,
+            ))
+    db.add_all(horarios)
+    await db.commit()
+
+    return {"mensaje": f"Cancha '{cancha.nombre}' creada", "cancha_id": str(cancha.id)}
+
+
+@router.patch("/canchas/{cancha_id}/toggle")
+async def admin_toggle_cancha(
+    cancha_id: uuid.UUID,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Cancha).where(Cancha.id == cancha_id))
+    cancha = result.scalar_one_or_none()
+    if not cancha:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+
+    cancha.activa = not cancha.activa
+    await db.commit()
+    return {"mensaje": f"Cancha {'activada' if cancha.activa else 'desactivada'}", "activa": cancha.activa}

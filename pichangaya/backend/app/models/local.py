@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import String, Text, Boolean, Numeric, DateTime
+from sqlalchemy import String, Text, Boolean, Numeric, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -17,7 +17,15 @@ class Local(Base):
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     foto_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # ✅ Relación admin dueño del local
+    admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now())
 
     # Relaciones
     canchas = relationship("Cancha", back_populates="local")
+    admin   = relationship("User", foreign_keys=[admin_id])

@@ -3,6 +3,19 @@ PARA LEVANATR EL BACKEND DE PICHANGAYA
 venv\Scripts\activate
 uvicorn app.main:app --reload --port 8000
 
+Lanza el emulador Pixel 7----
+Abre una terminal CMD nueva (o usa la misma) y corre:
+flutter emulators --launch Pixel_7
+
+
+Corre la app
+Una vez el emulador esté listo, vuelve a la terminal del frontend y corre:
+flutter run
+
+
+
+
+
 
 
 

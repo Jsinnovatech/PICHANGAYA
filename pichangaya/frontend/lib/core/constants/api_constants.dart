@@ -1,46 +1,41 @@
 class ApiConstants {
-  // Cambiar según ambiente
-  // static const String baseUrl = 'http://10.0.2.2:8000/api/v1'; // Android emulator
-  static const String baseUrl =
-      'http://localhost:8000/api/v1'; // Chrome / desarrollo web
-  // static const String baseUrl = 'https://pichangaya.railway.app/api/v1'; // Producción
-
+  // ── Solo localhost por ahora ──────────────────────────────────
+  static const String baseUrl = 'http://localhost:8000/api/v1';
   static const String wsTimers = 'ws://localhost:8000/ws/timers';
 
-  // Auth
+  // ── Auth ──────────────────────────────────────────────────────
   static const String register = '/auth/register';
-  static const String login = '/auth/login';
-  static const String refresh = '/auth/refresh';
-  static const String me = '/auth/me';
+  static const String login    = '/auth/login';
+  static const String refresh  = '/auth/refresh';
+  static const String me       = '/auth/me';
 
-  // Locales + Canchas
-  static const String locales = '/locales';
+  // ── Locales + Canchas ─────────────────────────────────────────
+  static const String locales        = '/locales';
   static const String disponibilidad = '/canchas/{id}/disponibilidad';
 
-  // Reservas
-  static const String reservas = '/reservas';
+  // ── Reservas ─────────────────────────────────────────────────
+  static const String reservas    = '/reservas';
   static const String misReservas = '/reservas/mis-reservas';
 
-  // Pagos
+  // ── Pagos ─────────────────────────────────────────────────────
   static const String pagoVoucher = '/pagos/{id}/voucher';
 
-  // Admin
-  static const String adminReservas = '/admin/reservas';
-  static const String adminPagos = '/admin/pagos';
-  static const String adminClientes = '/admin/clientes';
-  static const String adminDashboard = '/admin/dashboard';
+  // ── Admin ─────────────────────────────────────────────────────
+  static const String adminReservas      = '/admin/reservas';
+  static const String adminPagos         = '/admin/pagos';
+  static const String adminClientes      = '/admin/clientes';
+  static const String adminDashboard     = '/admin/dashboard';
   static const String adminVerificarPago = '/admin/pagos/{id}/verificar';
 
-  // Suscripción
-  static const String miSuscripcion = '/suscripcion/mi-suscripcion';
+  // ── Suscripción ───────────────────────────────────────────────
+  static const String miSuscripcion    = '/suscripcion/mi-suscripcion';
   static const String pagarSuscripcion = '/suscripcion/pagar';
 
-  // Super Admin
-  static const String superAdminDashboard = '/super-admin/dashboard';
-  static const String superAdminSuscripciones =
-      '/super-admin/suscripciones-pendientes';
+  // ── Super Admin ───────────────────────────────────────────────
+  static const String superAdminDashboard     = '/super-admin/dashboard';
+  static const String superAdminSuscripciones = '/super-admin/suscripciones-pendientes';
 
-  // Notificaciones
+  // ── Notificaciones ────────────────────────────────────────────
   static const String notificaciones = '/notificaciones';
-  static const String noLeidas = '/notificaciones/no-leidas';
+  static const String noLeidas       = '/notificaciones/no-leidas';
 }

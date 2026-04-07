@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pichangaya/core/constants/api_constants.dart';
 
-/// Equivale al fetch() con JWT del HTML + interceptors
+/// Cliente HTTP singleton con JWT automático + refresh token
 class ApiClient {
   static final ApiClient _i = ApiClient._();
   factory ApiClient() => _i;
@@ -65,16 +65,27 @@ class ApiClient {
     }
   }
 
-  Future<void> saveTokens({required String access, required String refresh}) async {
+  // Fuerza rebuild del Dio con la URL correcta para la plataforma actual
+  void resetDio() => _dio = null;
+
+  Future<void> saveTokens({
+    required String access,
+    required String refresh,
+  }) async {
     await _storage.write(key: 'access_token', value: access);
     await _storage.write(key: 'refresh_token', value: refresh);
-    _dio = null; // fuerza rebuild con nuevo token
+    _dio = null; // fuerza rebuild
   }
 
-  Future<void> saveUser(String userJson) async =>
+  Future<void> saveUser(String userJson) =>
       _storage.write(key: 'user_json', value: userJson);
 
   Future<String?> getUserJson() => _storage.read(key: 'user_json');
+
+  Future<void> saveRol(String rol) =>
+      _storage.write(key: 'user_rol', value: rol);
+
+  Future<String?> getRol() => _storage.read(key: 'user_rol');
 
   Future<void> logout() async {
     await _storage.deleteAll();
@@ -83,7 +94,4 @@ class ApiClient {
 
   Future<bool> isLoggedIn() async =>
       (await _storage.read(key: 'access_token')) != null;
-
-  Future<String?> getRol() => _storage.read(key: 'user_rol');
-  Future<void> saveRol(String rol) => _storage.write(key: 'user_rol', value: rol);
 }

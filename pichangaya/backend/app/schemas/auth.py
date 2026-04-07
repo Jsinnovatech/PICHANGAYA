@@ -1,17 +1,18 @@
 from pydantic import BaseModel, field_validator
 import re
+from typing import Optional
 
 
 class RegisterRequest(BaseModel):
     celular: str
     nombre: str
     password: str
-    dni: str | None = None
+    dni: Optional[str] = None
 
     @field_validator("celular")
     @classmethod
     def validate_celular(cls, v):
-        v = v.replace(" ", "").replace("-", "")
+        v = v.replace(" ", "").replace("-", "").replace("+51", "")
         if not re.match(r"^\d{9}$", v):
             raise ValueError("El celular debe tener 9 dígitos")
         return v
@@ -35,6 +36,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     rol: str
     nombre: str
+    celular: Optional[str] = None
 
 
 class RefreshRequest(BaseModel):
@@ -45,7 +47,7 @@ class UserResponse(BaseModel):
     id: str
     celular: str
     nombre: str
-    dni: str | None
+    dni: Optional[str] = None
     rol: str
     activo: bool
 
