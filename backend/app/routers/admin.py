@@ -94,9 +94,11 @@ async def admin_dashboard(
     db: AsyncSession = Depends(get_db)
 ):
     import calendar
-    from datetime import datetime, timezone, date as date_type
+    from datetime import datetime, timezone, timedelta, date as date_type
     from app.models.pago import MetodoPagoEnum
-    hoy = datetime.now(timezone.utc).date()
+    # Usar hora de Lima (UTC-5) para que "hoy" coincida con la fecha local del negocio
+    LIMA_TZ = timezone(timedelta(hours=-5))
+    hoy = datetime.now(LIMA_TZ).date()
 
     # ── Stats básicos ────────────────────────────────────────────
     reservas_hoy = (await db.execute(

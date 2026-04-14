@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
@@ -10,18 +11,37 @@ class AdminDashboardPage extends StatefulWidget {
   State<AdminDashboardPage> createState() => _State();
 }
 
-class _State extends State<AdminDashboardPage> {
+class _State extends State<AdminDashboardPage> with WidgetsBindingObserver {
   Map<String, dynamic>? _stats;
   List<dynamic> _pagosMetodo = [];
   List<dynamic> _reservasMes = [];
   bool _loading = true;
   String? _error;
   int _pieTouched = -1;
+  Timer? _autoRefresh;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _cargar();
+    // Auto-refresh cada 60 segundos
+    _autoRefresh = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) _cargar();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefresh?.cancel();
+    super.dispose();
+  }
+
+  /// Recarga cuando la app vuelve a primer plano
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) _cargar();
   }
 
   Future<void> _cargar() async {

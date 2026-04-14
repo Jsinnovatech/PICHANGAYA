@@ -20,6 +20,7 @@ class AdminShell extends StatefulWidget {
 
 class _State extends State<AdminShell> {
   int _pageIndex = 0;
+  int _dashboardKey = 0; // incrementar para forzar rebuild del dashboard
   bool _sidebarOpen = false;
   String _nombreAdmin = 'Admin';
 
@@ -34,15 +35,15 @@ class _State extends State<AdminShell> {
     {'icon': '🏟️', 'label': 'Canchas'},
   ];
 
-  static const _pages = [
-    AdminDashboardPage(),
-    AdminUltimasReservasPage(),
-    AdminReservasPage(),
-    AdminPagosPage(),
-    AdminClientesPage(),
-    AdminTimersPage(),
-    AdminFacturacionPage(),
-    AdminCanchasPage(),
+  List<Widget> get _pages => [
+    AdminDashboardPage(key: ValueKey(_dashboardKey)),
+    const AdminUltimasReservasPage(),
+    const AdminReservasPage(),
+    const AdminPagosPage(),
+    const AdminClientesPage(),
+    const AdminTimersPage(),
+    const AdminFacturacionPage(),
+    const AdminCanchasPage(),
   ];
 
   @override
@@ -59,6 +60,8 @@ class _State extends State<AdminShell> {
   }
 
   void _goPage(int i) => setState(() {
+        // Si vuelve al dashboard, incrementar key para forzar reload de datos
+        if (i == 0) _dashboardKey++;
         _pageIndex = i;
         _sidebarOpen = false;
       });
