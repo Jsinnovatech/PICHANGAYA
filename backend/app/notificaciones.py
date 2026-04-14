@@ -171,6 +171,29 @@ async def notif_reserva_rechazada(
     )
 
 
+async def notif_reserva_cancelada_por_cliente(
+    db: AsyncSession,
+    admin_id: uuid.UUID,
+    cliente_nombre: str,
+    cancha_nombre: str,
+    fecha: str,
+    hora: str,
+    codigo: str
+):
+    """
+    Admin recibe notificación cuando un cliente cancela su reserva.
+    El slot queda libre para nuevas reservas.
+    """
+    await crear_notificacion(
+        db=db,
+        usuario_id=admin_id,
+        tipo=TipoNotificacionEnum.reserva_cancelada_por_cliente,
+        titulo="Reserva cancelada por cliente",
+        mensaje=f"{cliente_nombre} canceló la reserva {codigo} en {cancha_nombre} el {fecha} a las {hora}. El horario ya está disponible.",
+        data={"codigo": codigo, "cliente": cliente_nombre, "cancha": cancha_nombre, "fecha": fecha, "hora": hora}
+    )
+
+
 async def get_super_admin_id(db: AsyncSession) -> uuid.UUID | None:
     """
     Obtiene el ID del super admin para enviarle notificaciones.

@@ -27,6 +27,8 @@ class TipoNotificacionEnum(str, enum.Enum):
     # → Cliente: "Tu reserva está confirmada"
     reserva_rechazada             = "reserva_rechazada"
     # → Cliente: "Tu pago fue rechazado"
+    reserva_cancelada_por_cliente = "reserva_cancelada_por_cliente"
+    # → Admin: "El cliente canceló su reserva"
 
 
 class Notificacion(Base):

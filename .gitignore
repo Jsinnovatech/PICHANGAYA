@@ -21,3 +21,11 @@ frontend/ios/Pods/
 *.log
 .idea/
 .vscode/
+
+# Carpeta espejo / duplicado — NO usar, trabajo activo en backend/ y frontend/
+pichangaya/
+
+# Python cache global
+**/__pycache__/
+**/*.pyc
+**/*.pyo

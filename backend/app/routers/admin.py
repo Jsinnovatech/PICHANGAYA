@@ -4,6 +4,7 @@ from sqlalchemy import select, func
 from typing import List, Optional
 from datetime import date
 import uuid
+import logging
 
 from app.core.database import get_db
 from app.core.dependencies import require_admin
@@ -13,6 +14,8 @@ from app.models.user import User, RolEnum
 from app.models.cancha import Cancha
 from app.models.local import Local
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 # ══════════════════════════════════════════════
@@ -164,57 +167,95 @@ async def admin_get_reservas(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Reserva).order_by(Reserva.created_at.desc())
+    try:
+        query = select(Reserva).order_by(Reserva.created_at.desc())
 
-    if estado:
-        try:
-            estado_enum = EstadoReservaEnum(estado)
-            query = query.where(Reserva.estado == estado_enum)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Estado inválido: {estado}")
+        if estado:
+            try:
+                estado_enum = EstadoReservaEnum(estado)
+                query = query.where(Reserva.estado == estado_enum)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Estado inválido: {estado}")
 
-    if fecha:
-        query = query.where(Reserva.fecha == fecha)
+        if fecha:
+            query = query.where(Reserva.fecha == fecha)
 
-    result = await db.execute(query)
-    reservas = result.scalars().all()
+        result = await db.execute(query)
+        reservas = result.scalars().all()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error al consultar reservas en BD: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar la base de datos: {str(e)}"
+        )
 
     respuesta = []
     for reserva in reservas:
-        cliente_result = await db.execute(select(User).where(User.id == reserva.cliente_id))
-        cliente = cliente_result.scalar_one_or_none()
+        try:
+            cliente_result = await db.execute(select(User).where(User.id == reserva.cliente_id))
+            cliente = cliente_result.scalar_one_or_none()
 
-        cancha_result = await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))
-        cancha = cancha_result.scalar_one_or_none()
+            cancha_result = await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))
+            cancha = cancha_result.scalar_one_or_none()
 
-        local = None
-        if cancha:
-            local_result = await db.execute(select(Local).where(Local.id == cancha.local_id))
-            local = local_result.scalar_one_or_none()
+            local = None
+            if cancha:
+                local_result = await db.execute(select(Local).where(Local.id == cancha.local_id))
+                local = local_result.scalar_one_or_none()
 
-        pago_result = await db.execute(select(Pago).where(Pago.reserva_id == reserva.id))
-        pago = pago_result.scalar_one_or_none()
+            pago_result = await db.execute(select(Pago).where(Pago.reserva_id == reserva.id))
+            pago = pago_result.scalars().first()
 
-        respuesta.append(ReservaAdminResponse(
-            id=reserva.id,
-            codigo=reserva.codigo,
-            cliente_nombre=cliente.nombre if cliente else "Desconocido",
-            cliente_celular=cliente.celular if cliente else "",
-            cancha_nombre=cancha.nombre if cancha else None,
-            local_nombre=local.nombre if local else None,
-            fecha=reserva.fecha,
-            hora_inicio=str(reserva.hora_inicio)[:5],
-            hora_fin=str(reserva.hora_fin)[:5],
-            precio_total=float(reserva.precio_total),
-            estado=reserva.estado.value,
-            tipo_doc=reserva.tipo_doc.value if reserva.tipo_doc else None,
-            metodo_pago=pago.metodo.value if pago else None,
-            voucher_url=pago.voucher_url if pago else None,
-            pago_estado=pago.estado.value if pago else None,
-            pago_id=pago.id if pago else None
-        ))
+            respuesta.append(ReservaAdminResponse(
+                id=reserva.id,
+                codigo=reserva.codigo,
+                cliente_nombre=cliente.nombre if cliente else "Desconocido",
+                cliente_celular=cliente.celular if cliente else "",
+                cancha_nombre=cancha.nombre if cancha else None,
+                local_nombre=local.nombre if local else None,
+                fecha=reserva.fecha,
+                hora_inicio=str(reserva.hora_inicio)[:5],
+                hora_fin=str(reserva.hora_fin)[:5],
+                precio_total=float(reserva.precio_total),
+                estado=reserva.estado.value,
+                tipo_doc=reserva.tipo_doc.value if reserva.tipo_doc else None,
+                metodo_pago=pago.metodo.value if pago else None,
+                voucher_url=pago.voucher_url if pago else None,
+                pago_estado=pago.estado.value if pago else None,
+                pago_id=pago.id if pago else None
+            ))
+        except Exception as e:
+            logger.error(f"Error procesando reserva {reserva.id}: {e}", exc_info=True)
+            continue
 
     return respuesta
+
+
+@router.delete("/reservas/{reserva_id}")
+async def admin_eliminar_reserva(
+    reserva_id: uuid.UUID,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Reserva).where(Reserva.id == reserva_id))
+    reserva = result.scalar_one_or_none()
+
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    # Cancelar el pago asociado primero
+    pago_result = await db.execute(select(Pago).where(Pago.reserva_id == reserva.id))
+    pago = pago_result.scalars().first()
+    if pago:
+        pago.estado = EstadoPagoEnum.rechazado
+
+    reserva.estado = EstadoReservaEnum.canceled
+    await db.commit()
+
+    return {"mensaje": f"Reserva {reserva.codigo} cancelada/eliminada correctamente"}
 
 
 @router.patch("/reservas/{reserva_id}/estado")

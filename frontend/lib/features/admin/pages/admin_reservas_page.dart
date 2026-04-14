@@ -48,8 +48,23 @@ class _State extends State<AdminReservasPage> {
         _loading = false;
       });
     } catch (e) {
+      String msg = 'Error al cargar reservas';
+      final err = e.toString().toLowerCase();
+      if (err.contains('401') || err.contains('403') ||
+          err.contains('unauthorized') || err.contains('forbidden')) {
+        msg = 'Sin permisos — verifica tu sesión';
+      } else if (err.contains('500') || err.contains('internal server')) {
+        msg = 'Error del servidor — intenta de nuevo';
+      } else if (err.contains('timeout') || err.contains('timed out')) {
+        msg = 'Tiempo de espera agotado — el servidor tardó mucho';
+      } else if (err.contains('socketexception') ||
+          err.contains('connection refused') ||
+          err.contains('network') ||
+          err.contains('connection error')) {
+        msg = 'Sin conexión — verifica tu red';
+      }
       setState(() {
-        _error = 'Error al cargar reservas';
+        _error = msg;
         _loading = false;
       });
     }

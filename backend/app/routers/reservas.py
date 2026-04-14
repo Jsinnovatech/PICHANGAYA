@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from typing import List
 from datetime import date as date_type, time as time_type
 import uuid
+import logging
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -13,7 +15,9 @@ from app.models.cancha import Cancha
 from app.models.local import Local
 from app.models.user import User
 from app.schemas.reservas import ReservaCreateRequest, ReservaResponse, MiReservaResponse
-from app.notificaciones import notif_reserva_nueva
+from app.notificaciones import notif_reserva_nueva, notif_reserva_cancelada_por_cliente
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reservas", tags=["Reservas"])
 
@@ -89,7 +93,6 @@ async def crear_reserva(
         notas=None
     )
     db.add(nueva_reserva)
-    await db.flush()
 
     # ── Paso 6: Crear pago ────────────────────────────────────
     nuevo_pago = Pago(
@@ -104,40 +107,48 @@ async def crear_reserva(
     )
     db.add(nuevo_pago)
 
-    # ── Paso 7: Notificar al admin del local ──────────────────
-    # Buscar el admin dueño del local para notificarle
-    if local:
-        admin_result = await db.execute(
-            select(User).where(
-                User.rol == "admin",
-                User.activo == True
-            ).limit(1)
-            # En producción filtrar por admin dueño del local
-            # Por ahora notificamos al primer admin activo
+    # ── Paso 7: Flush con manejo de conflicto ─────────────────
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"El horario {data.hora_inicio} del {data.fecha} ya está reservado"
         )
-        admin = admin_result.scalar_one_or_none()
-
-        if admin:
-            # Obtener nombre del cliente
-            cliente_result = await db.execute(
-                select(User).where(User.id == uuid.UUID(current_user["id"]))
-            )
-            cliente = cliente_result.scalar_one_or_none()
-            cliente_nombre = cliente.nombre if cliente else "Cliente"
-
-            await notif_reserva_nueva(
-                db=db,
-                admin_id=admin.id,
-                cliente_nombre=cliente_nombre,
-                cancha_nombre=cancha.nombre,
-                fecha=str(data.fecha),
-                hora=data.hora_inicio,
-                codigo=codigo
-            )
 
     # ── Paso 8: Commit ────────────────────────────────────────
     await db.commit()
     await db.refresh(nueva_reserva)
+
+    # ── Paso 9: Notificar al admin (no crítico) ───────────────
+    try:
+        if local:
+            admin_result = await db.execute(
+                select(User).where(
+                    User.rol == "admin",
+                    User.activo == True
+                ).limit(1)
+            )
+            admin = admin_result.scalar_one_or_none()
+            if admin:
+                cliente_result = await db.execute(
+                    select(User).where(User.id == uuid.UUID(current_user["id"]))
+                )
+                cliente = cliente_result.scalar_one_or_none()
+                cliente_nombre = cliente.nombre if cliente else "Cliente"
+                await notif_reserva_nueva(
+                    db=db,
+                    admin_id=admin.id,
+                    cliente_nombre=cliente_nombre,
+                    cancha_nombre=cancha.nombre,
+                    fecha=str(data.fecha),
+                    hora=data.hora_inicio,
+                    codigo=codigo
+                )
+                await db.commit()
+    except Exception as e:
+        logger.warning(f"Notificación de nueva reserva no enviada: {e}")
 
     return ReservaResponse(
         id=nueva_reserva.id,
@@ -196,3 +207,83 @@ async def mis_reservas(
         ))
 
     return respuesta
+
+
+@router.patch("/{reserva_id}/cancelar")
+async def cancelar_reserva(
+    reserva_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # ── Paso 1: Buscar la reserva del cliente ─────────────────
+    result = await db.execute(
+        select(Reserva).where(
+            Reserva.id == reserva_id,
+            Reserva.cliente_id == uuid.UUID(current_user["id"])
+        )
+    )
+    reserva = result.scalar_one_or_none()
+
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    # ── Paso 2: Solo se pueden cancelar reservas pendientes ───
+    if reserva.estado not in [EstadoReservaEnum.pending]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Solo puedes cancelar reservas pendientes. Estado actual: {reserva.estado.value}"
+        )
+
+    # ── Paso 3: Cancelar la reserva ───────────────────────────
+    reserva.estado = EstadoReservaEnum.canceled
+
+    # ── Paso 4: Cancelar el pago asociado ────────────────────
+    pago_result = await db.execute(
+        select(Pago).where(Pago.reserva_id == reserva.id)
+    )
+    pago = pago_result.scalars().first()
+    if pago:
+        pago.estado = EstadoPagoEnum.rechazado
+
+    # ── Paso 5: Commit cancelación (CRÍTICO — se guarda siempre) ──
+    await db.commit()
+
+    # ── Paso 6: Notificar al admin (no crítico) ────────────────
+    try:
+        cancha_result = await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))
+        cancha = cancha_result.scalar_one_or_none()
+
+        cliente_result = await db.execute(
+            select(User).where(User.id == uuid.UUID(current_user["id"]))
+        )
+        cliente = cliente_result.scalar_one_or_none()
+        cliente_nombre = cliente.nombre if cliente else "Cliente"
+        cancha_nombre = cancha.nombre if cancha else "Cancha"
+
+        admin_result = await db.execute(
+            select(User).where(
+                User.rol == "admin",
+                User.activo == True
+            ).limit(1)
+        )
+        admin = admin_result.scalar_one_or_none()
+
+        if admin:
+            await notif_reserva_cancelada_por_cliente(
+                db=db,
+                admin_id=admin.id,
+                cliente_nombre=cliente_nombre,
+                cancha_nombre=cancha_nombre,
+                fecha=str(reserva.fecha),
+                hora=str(reserva.hora_inicio)[:5],
+                codigo=reserva.codigo
+            )
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"Notificación de cancelación no enviada (reserva igual cancelada): {e}")
+
+    return {
+        "mensaje": f"Reserva {reserva.codigo} cancelada correctamente",
+        "codigo": reserva.codigo,
+        "estado": EstadoReservaEnum.canceled.value
+    }

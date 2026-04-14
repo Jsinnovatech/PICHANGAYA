@@ -90,11 +90,25 @@ class _MisReservasTabState extends State<MisReservasTab> {
     try {
       await ApiClient().dio.patch('/reservas/$id/cancelar');
       _cargar();
-    } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Error al cancelar'),
-            backgroundColor: AppColors.rojo));
+          content: Text('✅ Reserva cancelada correctamente'),
+          backgroundColor: Color(0xFF1B5E20),
+        ));
+      }
+    } catch (e) {
+      String msg = 'Error al cancelar la reserva';
+      if (e.toString().contains('400')) {
+        msg = 'Solo puedes cancelar reservas pendientes';
+      } else if (e.toString().contains('404')) {
+        msg = 'Reserva no encontrada';
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          backgroundColor: AppColors.rojo,
+        ));
+      }
     }
   }
 
