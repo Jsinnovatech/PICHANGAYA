@@ -14,7 +14,11 @@ class _State extends State<AdminFacturacionPage> {
   Map<String, dynamic>? _stats;
   bool _loading = true;
   String? _error;
-  String _filtro = 'todos'; // todos | boleta | factura | sin_tipo
+  String _filtro = 'todos';
+  int _carouselPage = 0;
+  final _pageCtrl = PageController(viewportFraction: 0.88);
+
+  static const int _verticalCount = 6;
 
   static const _filtros = [
     ('todos',    '📋 Todos'),
@@ -27,6 +31,12 @@ class _State extends State<AdminFacturacionPage> {
   void initState() {
     super.initState();
     _cargar();
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _cargar() async {
@@ -49,6 +59,7 @@ class _State extends State<AdminFacturacionPage> {
 
   void _aplicarFiltro() {
     setState(() {
+      _carouselPage = 0;
       _filtrados = _filtro == 'todos'
           ? _items
           : _filtro == 'sin_tipo'
@@ -129,7 +140,7 @@ class _State extends State<AdminFacturacionPage> {
         ),
       ),
 
-      // Lista
+      // Lista con carrusel
       Expanded(
         child: _filtrados.isEmpty
             ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -137,25 +148,67 @@ class _State extends State<AdminFacturacionPage> {
                 const SizedBox(height: 12),
                 const Text('No hay registros para este filtro', style: TextStyle(color: AppColors.texto2)),
               ]))
-            : RefreshIndicator(
-                onRefresh: _cargar,
-                color: AppColors.verde,
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _filtrados.length,
-                  itemBuilder: (_, i) => _cardItem(_filtrados[i]),
-                ),
-              ),
+            : _buildLista(),
       ),
     ]);
   }
 
-  Widget _cardItem(Map<String, dynamic> e) {
-    final tipoDoc = e['tipo_doc'] as String?;
+  Widget _buildLista() {
+    final vertical    = _filtrados.take(_verticalCount).toList();
+    final carrusel    = _filtrados.skip(_verticalCount).toList();
+    final hayCarrusel = carrusel.isNotEmpty;
+
+    return RefreshIndicator(
+      onRefresh: _cargar,
+      color: AppColors.verde,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+          // Header
+          Row(children: [
+            const Text('Facturación', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+            const Spacer(),
+            Text('${_filtrados.length} registros', style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
+          ]),
+          const SizedBox(height: 12),
+
+          // Verticales (primeros 6)
+          ...vertical.map((e) => _cardItem(e as Map<String, dynamic>,
+              margin: const EdgeInsets.only(bottom: 8))),
+
+          // Carrusel
+          if (hayCarrusel) ...[
+            const SizedBox(height: 8),
+            _indicadorCarrusel(carrusel.length),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 200,
+              child: PageView.builder(
+                controller: _pageCtrl,
+                itemCount: carrusel.length,
+                onPageChanged: (p) => setState(() => _carouselPage = p),
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: _cardItem(carrusel[i] as Map<String, dynamic>),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _dots(carrusel.length, _carouselPage),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _cardItem(Map<String, dynamic> e, {EdgeInsets margin = EdgeInsets.zero}) {
+    final tipoDoc   = e['tipo_doc'] as String?;
     final compEstado = e['comprobante_estado'] as String?;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: margin,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.negro2,
@@ -164,16 +217,20 @@ class _State extends State<AdminFacturacionPage> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text(e['codigo'] ?? '—', style: const TextStyle(fontSize: 11, color: AppColors.texto2, fontWeight: FontWeight.w600)),
+          Text(e['codigo'] ?? '—',
+              style: const TextStyle(fontSize: 11, color: AppColors.texto2, fontWeight: FontWeight.w600)),
           const Spacer(),
           _badgeTipoDoc(tipoDoc),
         ]),
         const SizedBox(height: 6),
-        Text(e['cliente_nombre'] ?? '—', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
-        Text('+51 ${e['cliente_celular'] ?? ''}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
+        Text(e['cliente_nombre'] ?? '—',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+        Text('+51 ${e['cliente_celular'] ?? ''}',
+            style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         const SizedBox(height: 6),
         Row(children: [
-          Text('${e['cancha_nombre'] ?? '—'} · ${e['fecha'] ?? ''}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
+          Text('${e['cancha_nombre'] ?? '—'} · ${e['fecha'] ?? ''}',
+              style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
           const Spacer(),
           Text('S/.${(e['monto'] ?? 0.0).toStringAsFixed(2)}',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.verde)),
@@ -192,27 +249,58 @@ class _State extends State<AdminFacturacionPage> {
         if (e['pdf_url'] != null) ...[
           const SizedBox(height: 8),
           GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('PDF: ${e['pdf_url']}'),
-                backgroundColor: AppColors.azul,
-              ));
-            },
-            child: const Text('📄 Ver PDF', style: TextStyle(fontSize: 12, color: AppColors.azul, decoration: TextDecoration.underline)),
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('PDF: ${e['pdf_url']}'),
+              backgroundColor: AppColors.azul,
+            )),
+            child: const Text('📄 Ver PDF',
+                style: TextStyle(fontSize: 12, color: AppColors.azul, decoration: TextDecoration.underline)),
           ),
         ] else ...[
           const SizedBox(height: 6),
-          const Text('⏳ Integración SUNAT Fase 4', style: TextStyle(fontSize: 11, color: AppColors.texto2, fontStyle: FontStyle.italic)),
+          const Text('⏳ Integración SUNAT Fase 4',
+              style: TextStyle(fontSize: 11, color: AppColors.texto2, fontStyle: FontStyle.italic)),
         ],
       ]),
     );
   }
 
+  Widget _indicadorCarrusel(int cantidad) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+    decoration: BoxDecoration(
+      color: AppColors.verde.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: AppColors.verde.withOpacity(0.2)),
+    ),
+    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      const Icon(Icons.swipe, color: AppColors.verde, size: 16),
+      const SizedBox(width: 8),
+      Text('Desliza para ver $cantidad registro${cantidad > 1 ? 's' : ''} más',
+          style: const TextStyle(fontSize: 12, color: AppColors.verde, fontWeight: FontWeight.w600)),
+      const SizedBox(width: 6),
+      const Icon(Icons.arrow_forward, color: AppColors.verde, size: 14),
+    ]),
+  );
+
+  Widget _dots(int total, int current) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: List.generate(total, (i) => AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      width: i == current ? 18 : 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: i == current ? AppColors.verde : AppColors.borde,
+        borderRadius: BorderRadius.circular(3),
+      ),
+    )),
+  );
+
   Widget _badgeTipoDoc(String? tipo) {
     Color color; String label;
-    if (tipo == 'boleta') { color = AppColors.azul; label = '🧾 BOLETA'; }
+    if (tipo == 'boleta')       { color = AppColors.azul;    label = '🧾 BOLETA'; }
     else if (tipo == 'factura') { color = AppColors.naranja; label = '📄 FACTURA'; }
-    else { color = AppColors.texto2; label = '❓ SIN TIPO'; }
+    else                        { color = AppColors.texto2;  label = '❓ SIN TIPO'; }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
@@ -222,10 +310,10 @@ class _State extends State<AdminFacturacionPage> {
 
   Widget _badgeComprobante(String? estado) {
     Color color; String label;
-    if (estado == 'emitido') { color = AppColors.verde; label = '✅ EMITIDO'; }
+    if (estado == 'emitido')      { color = AppColors.verde;   label = '✅ EMITIDO'; }
     else if (estado == 'pendiente') { color = AppColors.amarillo; label = '⏳ PENDIENTE'; }
-    else if (estado == 'error') { color = AppColors.rojo; label = '❌ ERROR'; }
-    else { color = AppColors.texto2; label = '— SIN COMPROBANTE'; }
+    else if (estado == 'error')   { color = AppColors.rojo;    label = '❌ ERROR'; }
+    else                          { color = AppColors.texto2;  label = '— SIN COMPROBANTE'; }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
@@ -248,7 +336,10 @@ class _State extends State<AdminFacturacionPage> {
 
   Widget _statChip(String label, String val, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.3))),
+    decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3))),
     child: Column(children: [
       Text(val, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color)),
       Text(label, style: TextStyle(fontSize: 9, color: color.withOpacity(0.8))),

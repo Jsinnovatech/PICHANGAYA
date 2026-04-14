@@ -23,7 +23,7 @@ class _State extends State<AdminLoginScreen> {
     });
     try {
       final res = await ApiClient().dio.post(ApiConstants.login, data: {
-        'celular': _celCtrl.text.trim(),
+        'login': _celCtrl.text.trim(),
         'password': _passCtrl.text,
       });
       final rol = res.data['rol'];
