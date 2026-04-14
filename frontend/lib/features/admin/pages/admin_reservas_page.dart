@@ -14,10 +14,17 @@ class _State extends State<AdminReservasPage> {
   bool _loading = true;
   String? _error;
   String _filtroEstado = 'todos';
-  int _carouselPage = 0;
-  final _pageCtrl = PageController(viewportFraction: 0.88);
+  int _page = 0;
 
-  static const int _verticalCount = 4;
+  // Overhead: appbar(56) + tabbar(48) + filterbar(96) + toppad(12) + pagination(50) + margins(24)
+  static const double _overhead   = 286.0;
+  static const double _cardHeight = 118.0;
+
+  int _pageSize(BuildContext ctx) {
+    final available = MediaQuery.of(ctx).size.height - _overhead;
+    return (available / _cardHeight).floor().clamp(1, 20);
+  }
+
   static const _filtros = [
     ('todos',     'Todos'),
     ('pending',   'Pendientes'),
@@ -30,9 +37,6 @@ class _State extends State<AdminReservasPage> {
   @override
   void initState() { super.initState(); _cargar(); }
 
-  @override
-  void dispose() { _pageCtrl.dispose(); super.dispose(); }
-
   Future<void> _cargar() async {
     setState(() { _loading = true; _error = null; });
     try {
@@ -43,7 +47,7 @@ class _State extends State<AdminReservasPage> {
       String msg = 'Error al cargar reservas';
       final err = e.toString().toLowerCase();
       if (err.contains('401') || err.contains('403')) msg = 'Sin permisos — verifica tu sesión';
-      else if (err.contains('timeout')) msg = 'Tiempo de espera agotado';
+      else if (err.contains('timeout'))    msg = 'Tiempo de espera agotado';
       else if (err.contains('connection')) msg = 'Sin conexión — verifica tu red';
       setState(() { _error = msg; _loading = false; });
     }
@@ -116,7 +120,7 @@ class _State extends State<AdminReservasPage> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: _filtros.map((f) => GestureDetector(
-              onTap: () { setState(() { _filtroEstado = f.$1; _carouselPage = 0; }); _cargar(); },
+              onTap: () { setState(() { _filtroEstado = f.$1; _page = 0; }); _cargar(); },
               child: Container(
                 margin: const EdgeInsets.only(right: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -150,57 +154,46 @@ class _State extends State<AdminReservasPage> {
                     ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                         const Text('📋', style: TextStyle(fontSize: 40)),
                         const SizedBox(height: 12),
-                        Text(_filtroEstado == 'todos' ? 'No hay reservas aún' : 'No hay reservas con este estado',
+                        Text(_filtroEstado == 'todos' ? 'No hay reservas aún'
+                            : 'No hay reservas con este estado',
                             style: const TextStyle(color: AppColors.texto2)),
                       ]))
-                    : _buildLista(),
+                    : _buildLista(context),
       ),
     ]);
   }
 
-  Widget _buildLista() {
-    final vertical  = _reservas.take(_verticalCount).toList();
-    final carrusel  = _reservas.skip(_verticalCount).toList();
-    final hayCarrusel = carrusel.isNotEmpty;
+  Widget _buildLista(BuildContext context) {
+    final ps    = _pageSize(context);
+    final total = (_reservas.length / ps).ceil();
+    final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
+    final items = _reservas.skip(page * ps).take(ps).toList();
 
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      color: AppColors.verde,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ...vertical.map((r) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _cardReserva(r as Map<String, dynamic>),
-          )),
-
-          if (hayCarrusel) ...[
-            const SizedBox(height: 12),
-            _indicadorCarrusel(carrusel.length),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 200,
-              child: PageView.builder(
-                controller: _pageCtrl,
-                itemCount: carrusel.length,
-                onPageChanged: (p) => setState(() => _carouselPage = p),
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: _cardReserva(carrusel[i] as Map<String, dynamic>),
-                ),
-              ),
+    return Column(children: [
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _cargar,
+          color: AppColors.verde,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            itemCount: items.length,
+            itemBuilder: (_, i) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _cardReserva(items[i] as Map<String, dynamic>),
             ),
-            const SizedBox(height: 10),
-            _dots(carrusel.length, _carouselPage),
-          ],
-        ]),
+          ),
+        ),
       ),
-    );
+      if (total > 1) ...[
+        _paginacion(total, page),
+        const SizedBox(height: 8),
+      ],
+    ]);
   }
 
   Widget _cardReserva(Map<String, dynamic> r) {
-    final estado = r['estado'] ?? '';
+    final estado        = r['estado'] ?? '';
     final puedeConfirmar = estado == 'pending';
     final puedeCancelar  = estado == 'pending' || estado == 'confirmed';
 
@@ -264,40 +257,50 @@ class _State extends State<AdminReservasPage> {
     );
   }
 
-  Widget _indicadorCarrusel(int cantidad) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: BoxDecoration(
-      color: AppColors.verde.withOpacity(0.08),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: AppColors.verde.withOpacity(0.2)),
-    ),
+  Widget _paginacion(int total, int current) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Icon(Icons.swipe, color: AppColors.verde, size: 16),
-      const SizedBox(width: 8),
-      Text('Desliza para ver $cantidad reserva${cantidad > 1 ? 's' : ''} más',
-          style: const TextStyle(fontSize: 12, color: AppColors.verde, fontWeight: FontWeight.w600)),
-      const SizedBox(width: 6),
-      const Icon(Icons.arrow_forward, color: AppColors.verde, size: 14),
+      _arrowBtn(Icons.arrow_back_ios_new, current > 0,
+          () => setState(() => _page = current - 1)),
+      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current)),
+      if (total > 9) Text('${current + 1} / $total',
+          style: const TextStyle(color: AppColors.verde, fontSize: 14, fontWeight: FontWeight.w700)),
+      _arrowBtn(Icons.arrow_forward_ios, current < total - 1,
+          () => setState(() => _page = current + 1)),
     ]),
   );
 
-  Widget _dots(int total, int current) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: List.generate(total, (i) => AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
+  Widget _pageNum(int i, int current) => GestureDetector(
+    onTap: () => setState(() => _page = i),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       margin: const EdgeInsets.symmetric(horizontal: 3),
-      width: i == current ? 18 : 6, height: 6,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: i == current ? AppColors.verde : AppColors.borde,
-        borderRadius: BorderRadius.circular(3),
+        color: i == current ? AppColors.verde.withOpacity(0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: i == current ? AppColors.verde : Colors.transparent),
       ),
-    )),
+      child: Text('${i + 1}', style: TextStyle(
+        fontSize: 13,
+        fontWeight: i == current ? FontWeight.w700 : FontWeight.normal,
+        color: i == current ? AppColors.verde : AppColors.texto2,
+      )),
+    ),
+  );
+
+  Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Icon(icon, size: 16, color: enabled ? AppColors.verde : AppColors.borde),
+    ),
   );
 
   Widget _badgeEstado(String estado) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
-      color: _colorEstado(estado).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+        color: _colorEstado(estado).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
     child: Text(_labelEstado(estado),
         style: TextStyle(fontSize: 10, color: _colorEstado(estado), fontWeight: FontWeight.w700)),
   );
@@ -339,8 +342,8 @@ class _DetalleReservaSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final r = reserva;
-    final estado = r['estado'] ?? '';
+    final r              = reserva;
+    final estado         = r['estado'] ?? '';
     final puedeConfirmar = estado == 'pending';
     final puedeCancelar  = estado == 'pending' || estado == 'confirmed';
 
@@ -362,15 +365,15 @@ class _DetalleReservaSheet extends StatelessWidget {
           decoration: BoxDecoration(color: AppColors.negro3, borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppColors.borde)),
           child: Column(children: [
-            _fila('Código', r['codigo'] ?? '—'),
-            _fila('Cliente', r['cliente_nombre'] ?? '—'),
-            _fila('Celular', '+51 ${r['cliente_celular'] ?? ''}'),
-            _fila('Cancha', r['cancha_nombre'] ?? '—'),
-            _fila('Local', r['local_nombre'] ?? '—'),
-            _fila('Fecha', r['fecha'] ?? '—'),
-            _fila('Horario', '${r['hora_inicio'] ?? ''} - ${r['hora_fin'] ?? ''}'),
-            _fila('Precio', 'S/.${r['precio_total']?.toString() ?? '0'}'),
-            _fila('Método', r['metodo_pago']?.toString().toUpperCase() ?? 'Pendiente'),
+            _fila('Código',      r['codigo'] ?? '—'),
+            _fila('Cliente',     r['cliente_nombre'] ?? '—'),
+            _fila('Celular',     '+51 ${r['cliente_celular'] ?? ''}'),
+            _fila('Cancha',      r['cancha_nombre'] ?? '—'),
+            _fila('Local',       r['local_nombre'] ?? '—'),
+            _fila('Fecha',       r['fecha'] ?? '—'),
+            _fila('Horario',     '${r['hora_inicio'] ?? ''} - ${r['hora_fin'] ?? ''}'),
+            _fila('Precio',      'S/.${r['precio_total']?.toString() ?? '0'}'),
+            _fila('Método',      r['metodo_pago']?.toString().toUpperCase() ?? 'Pendiente'),
             _fila('Comprobante', r['tipo_doc']?.toString().toUpperCase() ?? '—'),
             if (r['pago_estado'] != null) _fila('Pago', r['pago_estado'].toString().toUpperCase()),
           ]),
@@ -389,13 +392,15 @@ class _DetalleReservaSheet extends StatelessWidget {
         if (puedeConfirmar || puedeCancelar) Row(children: [
           if (puedeCancelar) Expanded(child: OutlinedButton(
             onPressed: () { Navigator.pop(context); onCambiarEstado(r['id'], 'canceled'); },
-            style: OutlinedButton.styleFrom(foregroundColor: AppColors.rojo, side: const BorderSide(color: AppColors.rojo)),
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.rojo,
+                side: const BorderSide(color: AppColors.rojo)),
             child: const Text('❌ Cancelar'),
           )),
           if (puedeConfirmar && puedeCancelar) const SizedBox(width: 10),
           if (puedeConfirmar) Expanded(child: ElevatedButton(
             onPressed: () { Navigator.pop(context); onCambiarEstado(r['id'], 'confirmed'); },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.verde, foregroundColor: AppColors.negro),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.verde,
+                foregroundColor: AppColors.negro),
             child: const Text('✅ Confirmar'),
           )),
         ]),
@@ -409,11 +414,11 @@ class _DetalleReservaSheet extends StatelessWidget {
 
   Widget _badge(String estado) {
     final map = {
-      'confirmed': (AppColors.verde, '✅ Confirmada'),
-      'pending':   (AppColors.amarillo, '⏳ Pendiente'),
-      'active':    (AppColors.azul, '🟢 En juego'),
-      'done':      (AppColors.texto2, '🏁 Finalizada'),
-      'canceled':  (AppColors.rojo, '❌ Cancelada'),
+      'confirmed': (AppColors.verde,   '✅ Confirmada'),
+      'pending':   (AppColors.amarillo,'⏳ Pendiente'),
+      'active':    (AppColors.azul,    '🟢 En juego'),
+      'done':      (AppColors.texto2,  '🏁 Finalizada'),
+      'canceled':  (AppColors.rojo,    '❌ Cancelada'),
     };
     final c = map[estado] ?? (AppColors.texto2, estado);
     return Container(

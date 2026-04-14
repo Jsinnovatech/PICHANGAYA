@@ -15,10 +15,16 @@ class _State extends State<AdminFacturacionPage> {
   bool _loading = true;
   String? _error;
   String _filtro = 'todos';
-  int _carouselPage = 0;
-  final _pageCtrl = PageController(viewportFraction: 0.88);
+  int _page = 0;
 
-  static const int _verticalCount = 6;
+  // Overhead: appbar(56) + tabbar(48) + banner(46) + stats(72) + filtros(52) + toppad(12) + pagination(50) + margins(20)
+  static const double _overhead   = 356.0;
+  static const double _cardHeight = 155.0;
+
+  int _pageSize(BuildContext ctx) {
+    final available = MediaQuery.of(ctx).size.height - _overhead;
+    return (available / _cardHeight).floor().clamp(1, 20);
+  }
 
   static const _filtros = [
     ('todos',    '📋 Todos'),
@@ -28,16 +34,7 @@ class _State extends State<AdminFacturacionPage> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _cargar();
-  }
-
-  @override
-  void dispose() {
-    _pageCtrl.dispose();
-    super.dispose();
-  }
+  void initState() { super.initState(); _cargar(); }
 
   Future<void> _cargar() async {
     setState(() { _loading = true; _error = null; });
@@ -59,7 +56,7 @@ class _State extends State<AdminFacturacionPage> {
 
   void _aplicarFiltro() {
     setState(() {
-      _carouselPage = 0;
+      _page = 0;
       _filtrados = _filtro == 'todos'
           ? _items
           : _filtro == 'sin_tipo'
@@ -105,11 +102,14 @@ class _State extends State<AdminFacturacionPage> {
             const SizedBox(width: 8),
             _statChip('❓ Sin tipo',  '${_stats!['sin_comprobante'] ?? 0}', AppColors.texto2),
             const SizedBox(width: 8),
-            _statChip('💰 Total',    'S/.${(_stats!['ingresos_total'] ?? 0.0).toStringAsFixed(0)}', AppColors.verde),
+            _statChip('💰 Total',
+                'S/.${(_stats!['ingresos_total'] ?? 0.0).toStringAsFixed(0)}', AppColors.verde),
             const SizedBox(width: 8),
-            _statChip('📅 Este mes', 'S/.${(_stats!['ingresos_mes'] ?? 0.0).toStringAsFixed(0)}', AppColors.verde),
+            _statChip('📅 Este mes',
+                'S/.${(_stats!['ingresos_mes'] ?? 0.0).toStringAsFixed(0)}', AppColors.verde),
             const SizedBox(width: 8),
-            GestureDetector(onTap: _cargar, child: const Icon(Icons.refresh, color: AppColors.texto2, size: 18)),
+            GestureDetector(onTap: _cargar,
+                child: const Icon(Icons.refresh, color: AppColors.texto2, size: 18)),
           ]),
         ),
       ),
@@ -126,9 +126,11 @@ class _State extends State<AdminFacturacionPage> {
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _filtro == f.$1 ? AppColors.verde.withOpacity(0.15) : AppColors.negro3,
+                color: _filtro == f.$1
+                    ? AppColors.verde.withOpacity(0.15) : AppColors.negro3,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _filtro == f.$1 ? AppColors.verde : AppColors.borde),
+                border: Border.all(
+                    color: _filtro == f.$1 ? AppColors.verde : AppColors.borde),
               ),
               child: Text(f.$2, style: TextStyle(
                 fontSize: 12,
@@ -140,75 +142,52 @@ class _State extends State<AdminFacturacionPage> {
         ),
       ),
 
-      // Lista con carrusel
+      // Lista paginada
       Expanded(
         child: _filtrados.isEmpty
             ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 const Text('🧾', style: TextStyle(fontSize: 48)),
                 const SizedBox(height: 12),
-                const Text('No hay registros para este filtro', style: TextStyle(color: AppColors.texto2)),
+                const Text('No hay registros para este filtro',
+                    style: TextStyle(color: AppColors.texto2)),
               ]))
-            : _buildLista(),
+            : _buildLista(context),
       ),
     ]);
   }
 
-  Widget _buildLista() {
-    final vertical    = _filtrados.take(_verticalCount).toList();
-    final carrusel    = _filtrados.skip(_verticalCount).toList();
-    final hayCarrusel = carrusel.isNotEmpty;
+  Widget _buildLista(BuildContext context) {
+    final ps    = _pageSize(context);
+    final total = (_filtrados.length / ps).ceil();
+    final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
+    final items = _filtrados.skip(page * ps).take(ps).toList();
 
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      color: AppColors.verde,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-          // Header
-          Row(children: [
-            const Text('Facturación', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-            const Spacer(),
-            Text('${_filtrados.length} registros', style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
-          ]),
-          const SizedBox(height: 12),
-
-          // Verticales (primeros 6)
-          ...vertical.map((e) => _cardItem(e as Map<String, dynamic>,
-              margin: const EdgeInsets.only(bottom: 8))),
-
-          // Carrusel
-          if (hayCarrusel) ...[
-            const SizedBox(height: 8),
-            _indicadorCarrusel(carrusel.length),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 200,
-              child: PageView.builder(
-                controller: _pageCtrl,
-                itemCount: carrusel.length,
-                onPageChanged: (p) => setState(() => _carouselPage = p),
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: _cardItem(carrusel[i] as Map<String, dynamic>),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            _dots(carrusel.length, _carouselPage),
-          ],
-        ]),
+    return Column(children: [
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _cargar,
+          color: AppColors.verde,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            itemCount: items.length,
+            itemBuilder: (_, i) => _cardItem(items[i] as Map<String, dynamic>),
+          ),
+        ),
       ),
-    );
+      if (total > 1) ...[
+        _paginacion(total, page),
+        const SizedBox(height: 8),
+      ],
+    ]);
   }
 
-  Widget _cardItem(Map<String, dynamic> e, {EdgeInsets margin = EdgeInsets.zero}) {
-    final tipoDoc   = e['tipo_doc'] as String?;
+  Widget _cardItem(Map<String, dynamic> e) {
+    final tipoDoc    = e['tipo_doc'] as String?;
     final compEstado = e['comprobante_estado'] as String?;
 
     return Container(
-      margin: margin,
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.negro2,
@@ -218,13 +197,15 @@ class _State extends State<AdminFacturacionPage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Text(e['codigo'] ?? '—',
-              style: const TextStyle(fontSize: 11, color: AppColors.texto2, fontWeight: FontWeight.w600)),
+              style: const TextStyle(fontSize: 11, color: AppColors.texto2,
+                  fontWeight: FontWeight.w600)),
           const Spacer(),
           _badgeTipoDoc(tipoDoc),
         ]),
         const SizedBox(height: 6),
         Text(e['cliente_nombre'] ?? '—',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+                color: Colors.white)),
         Text('+51 ${e['cliente_celular'] ?? ''}',
             style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         const SizedBox(height: 6),
@@ -233,7 +214,8 @@ class _State extends State<AdminFacturacionPage> {
               style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
           const Spacer(),
           Text('S/.${(e['monto'] ?? 0.0).toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.verde)),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                  color: AppColors.verde)),
         ]),
         const SizedBox(height: 8),
         Row(children: [
@@ -254,46 +236,60 @@ class _State extends State<AdminFacturacionPage> {
               backgroundColor: AppColors.azul,
             )),
             child: const Text('📄 Ver PDF',
-                style: TextStyle(fontSize: 12, color: AppColors.azul, decoration: TextDecoration.underline)),
+                style: TextStyle(fontSize: 12, color: AppColors.azul,
+                    decoration: TextDecoration.underline)),
           ),
         ] else ...[
           const SizedBox(height: 6),
           const Text('⏳ Integración SUNAT Fase 4',
-              style: TextStyle(fontSize: 11, color: AppColors.texto2, fontStyle: FontStyle.italic)),
+              style: TextStyle(fontSize: 11, color: AppColors.texto2,
+                  fontStyle: FontStyle.italic)),
         ],
       ]),
     );
   }
 
-  Widget _indicadorCarrusel(int cantidad) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: BoxDecoration(
-      color: AppColors.verde.withOpacity(0.08),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: AppColors.verde.withOpacity(0.2)),
-    ),
+  Widget _paginacion(int total, int current) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Icon(Icons.swipe, color: AppColors.verde, size: 16),
-      const SizedBox(width: 8),
-      Text('Desliza para ver $cantidad registro${cantidad > 1 ? 's' : ''} más',
-          style: const TextStyle(fontSize: 12, color: AppColors.verde, fontWeight: FontWeight.w600)),
-      const SizedBox(width: 6),
-      const Icon(Icons.arrow_forward, color: AppColors.verde, size: 14),
+      _arrowBtn(Icons.arrow_back_ios_new, current > 0,
+          () => setState(() => _page = current - 1)),
+      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current)),
+      if (total > 9) Text('${current + 1} / $total',
+          style: const TextStyle(color: AppColors.verde, fontSize: 14,
+              fontWeight: FontWeight.w700)),
+      _arrowBtn(Icons.arrow_forward_ios, current < total - 1,
+          () => setState(() => _page = current + 1)),
     ]),
   );
 
-  Widget _dots(int total, int current) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: List.generate(total, (i) => AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
+  Widget _pageNum(int i, int current) => GestureDetector(
+    onTap: () => setState(() => _page = i),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       margin: const EdgeInsets.symmetric(horizontal: 3),
-      width: i == current ? 18 : 6,
-      height: 6,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: i == current ? AppColors.verde : AppColors.borde,
-        borderRadius: BorderRadius.circular(3),
+        color: i == current ? AppColors.verde.withOpacity(0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+            color: i == current ? AppColors.verde : Colors.transparent),
       ),
-    )),
+      child: Text('${i + 1}', style: TextStyle(
+        fontSize: 13,
+        fontWeight: i == current ? FontWeight.w700 : FontWeight.normal,
+        color: i == current ? AppColors.verde : AppColors.texto2,
+      )),
+    ),
+  );
+
+  Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Icon(icon, size: 16,
+          color: enabled ? AppColors.verde : AppColors.borde),
+    ),
   );
 
   Widget _badgeTipoDoc(String? tipo) {
@@ -303,34 +299,42 @@ class _State extends State<AdminFacturacionPage> {
     else                        { color = AppColors.texto2;  label = '❓ SIN TIPO'; }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
+      decoration: BoxDecoration(color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(6)),
+      child: Text(label, style: TextStyle(fontSize: 10, color: color,
+          fontWeight: FontWeight.w700)),
     );
   }
 
   Widget _badgeComprobante(String? estado) {
     Color color; String label;
-    if (estado == 'emitido')      { color = AppColors.verde;   label = '✅ EMITIDO'; }
+    if (estado == 'emitido')        { color = AppColors.verde;    label = '✅ EMITIDO'; }
     else if (estado == 'pendiente') { color = AppColors.amarillo; label = '⏳ PENDIENTE'; }
-    else if (estado == 'error')   { color = AppColors.rojo;    label = '❌ ERROR'; }
-    else                          { color = AppColors.texto2;  label = '— SIN COMPROBANTE'; }
+    else if (estado == 'error')     { color = AppColors.rojo;     label = '❌ ERROR'; }
+    else                            { color = AppColors.texto2;   label = '— SIN COMPROBANTE'; }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
+      decoration: BoxDecoration(color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(6)),
+      child: Text(label, style: TextStyle(fontSize: 10, color: color,
+          fontWeight: FontWeight.w700)),
     );
   }
 
   Widget _badgeMetodo(String? metodo) {
     final label = switch (metodo) {
-      'yape' => '📱 Yape', 'plin' => '💙 Plin',
-      'transferencia' => '🏦 Transfer.', 'efectivo' => '💵 Efectivo',
-      'tarjeta' => '💳 Tarjeta', _ => metodo?.toUpperCase() ?? '—',
+      'yape'          => '📱 Yape',
+      'plin'          => '💙 Plin',
+      'transferencia' => '🏦 Transfer.',
+      'efectivo'      => '💵 Efectivo',
+      'tarjeta'       => '💳 Tarjeta',
+      _               => metodo?.toUpperCase() ?? '—',
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: AppColors.negro3, borderRadius: BorderRadius.circular(6)),
-      child: Text(label, style: const TextStyle(fontSize: 10, color: AppColors.texto2, fontWeight: FontWeight.w600)),
+      child: Text(label, style: const TextStyle(fontSize: 10, color: AppColors.texto2,
+          fontWeight: FontWeight.w600)),
     );
   }
 

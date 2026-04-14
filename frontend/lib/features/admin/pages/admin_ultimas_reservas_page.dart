@@ -13,31 +13,25 @@ class _State extends State<AdminUltimasReservasPage> {
   List<dynamic> _reservas = [];
   bool _loading = true;
   String? _error;
-  int _carouselPage = 0;
-  final _pageCtrl = PageController(viewportFraction: 0.88);
+  int _page = 0;
 
-  static const int _verticalCount = 7;
+  // Overhead: appbar(56) + tabbar(48) + header(40) + toppad(12) + pagination(50) + margins(24)
+  static const double _overhead    = 230.0;
+  static const double _cardHeight  = 90.0;  // card padding + content + margin
 
-  @override
-  void initState() {
-    super.initState();
-    _cargar();
+  int _pageSize(BuildContext ctx) {
+    final available = MediaQuery.of(ctx).size.height - _overhead;
+    return (available / _cardHeight).floor().clamp(2, 20);
   }
 
   @override
-  void dispose() {
-    _pageCtrl.dispose();
-    super.dispose();
-  }
+  void initState() { super.initState(); _cargar(); }
 
   Future<void> _cargar() async {
     setState(() { _loading = true; _error = null; });
     try {
       final res = await ApiClient().dio.get(ApiConstants.adminDashboard);
-      setState(() {
-        _reservas = res.data['ultimas_reservas'] ?? [];
-        _loading = false;
-      });
+      setState(() { _reservas = res.data['ultimas_reservas'] ?? []; _loading = false; });
     } catch (_) {
       setState(() { _error = 'Error al cargar reservas'; _loading = false; });
     }
@@ -74,67 +68,53 @@ class _State extends State<AdminUltimasReservasPage> {
       ElevatedButton(onPressed: _cargar, child: const Text('Reintentar')),
     ]));
 
-    final vertical   = _reservas.take(_verticalCount).toList();
-    final carrusel   = _reservas.skip(_verticalCount).toList();
-    final hayCarrusel = carrusel.isNotEmpty;
+    final ps    = _pageSize(context);
+    final total = (_reservas.length / ps).ceil();
+    final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
+    final items = _reservas.skip(page * ps).take(ps).toList();
 
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      color: AppColors.verde,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-          // ── Header ────────────────────────────────────────────
-          Row(children: [
-            const Text('Últimas Reservas',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-            const Spacer(),
-            Text('${_reservas.length} registros',
-                style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
-            const SizedBox(width: 8),
-            GestureDetector(onTap: _cargar,
-                child: const Icon(Icons.refresh, color: AppColors.texto2, size: 18)),
-          ]),
-          const SizedBox(height: 12),
-
-          // ── Cards verticales (primeros 7) ─────────────────────
-          ...vertical.map((r) => _cardReserva(r, margin: const EdgeInsets.only(bottom: 8))),
-
-          // ── Indicador de carrusel ─────────────────────────────
-          if (hayCarrusel) ...[
-            const SizedBox(height: 16),
-            _indicadorCarrusel(carrusel.length),
-            const SizedBox(height: 10),
-
-            // ── Carrusel horizontal ───────────────────────────
-            SizedBox(
-              height: 110,
-              child: PageView.builder(
-                controller: _pageCtrl,
-                itemCount: carrusel.length,
-                onPageChanged: (p) => setState(() => _carouselPage = p),
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: _cardReserva(carrusel[i]),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // ── Dots ─────────────────────────────────────────
-            _dots(carrusel.length, _carouselPage),
-          ],
+    return Column(children: [
+      // ── Header ───────────────────────────────────────────────
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Row(children: [
+          const Text('Últimas Reservas',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+          const Spacer(),
+          Text('${_reservas.length} registros',
+              style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
+          const SizedBox(width: 8),
+          GestureDetector(onTap: _cargar,
+              child: const Icon(Icons.refresh, color: AppColors.texto2, size: 18)),
         ]),
       ),
-    );
+
+      // ── Cards de la página actual ─────────────────────────────
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _cargar,
+          color: AppColors.verde,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            itemCount: items.length,
+            itemBuilder: (_, i) => _cardReserva(items[i]),
+          ),
+        ),
+      ),
+
+      // ── Paginación ────────────────────────────────────────────
+      if (total > 1) ...[
+        _paginacion(total, page),
+        const SizedBox(height: 8),
+      ],
+    ]);
   }
 
-  Widget _cardReserva(dynamic r, {EdgeInsets margin = EdgeInsets.zero}) {
+  Widget _cardReserva(dynamic r) {
     final color = _colorEstado(r['estado']);
     return Container(
-      margin: margin,
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.negro2,
@@ -169,34 +149,43 @@ class _State extends State<AdminUltimasReservasPage> {
     );
   }
 
-  Widget _indicadorCarrusel(int cantidad) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: BoxDecoration(
-      color: AppColors.verde.withOpacity(0.08),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: AppColors.verde.withOpacity(0.2)),
-    ),
+  Widget _paginacion(int total, int current) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Icon(Icons.swipe, color: AppColors.verde, size: 16),
-      const SizedBox(width: 8),
-      Text('Desliza para ver $cantidad registro${cantidad > 1 ? 's' : ''} más',
-          style: const TextStyle(fontSize: 12, color: AppColors.verde, fontWeight: FontWeight.w600)),
-      const SizedBox(width: 6),
-      const Icon(Icons.arrow_forward, color: AppColors.verde, size: 14),
+      _arrowBtn(Icons.arrow_back_ios_new, current > 0,
+          () => setState(() => _page = current - 1)),
+      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current, total)),
+      if (total > 9) Text('${current + 1} / $total',
+          style: const TextStyle(color: AppColors.verde, fontSize: 14, fontWeight: FontWeight.w700)),
+      _arrowBtn(Icons.arrow_forward_ios, current < total - 1,
+          () => setState(() => _page = current + 1)),
     ]),
   );
 
-  Widget _dots(int total, int current) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: List.generate(total, (i) => AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
+  Widget _pageNum(int i, int current, int total) => GestureDetector(
+    onTap: () => setState(() => _page = i),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       margin: const EdgeInsets.symmetric(horizontal: 3),
-      width: i == current ? 18 : 6,
-      height: 6,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: i == current ? AppColors.verde : AppColors.borde,
-        borderRadius: BorderRadius.circular(3),
+        color: i == current ? AppColors.verde.withOpacity(0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: i == current ? AppColors.verde : Colors.transparent),
       ),
-    )),
+      child: Text('${i + 1}', style: TextStyle(
+        fontSize: 13,
+        fontWeight: i == current ? FontWeight.w700 : FontWeight.normal,
+        color: i == current ? AppColors.verde : AppColors.texto2,
+      )),
+    ),
+  );
+
+  Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Icon(icon, size: 16, color: enabled ? AppColors.verde : AppColors.borde),
+    ),
   );
 }
