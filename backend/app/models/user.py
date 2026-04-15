@@ -27,12 +27,10 @@ class User(Base):
         index=True
     )
 
-    # ── NUEVO: Email como método principal de login ───────────
     email: Mapped[str | None] = mapped_column(
         String(150),
         unique=True,
         nullable=True,
-        # nullable=True para no romper usuarios existentes
         index=True
     )
 
@@ -59,6 +57,12 @@ class User(Base):
 
     fcm_token: Mapped[str | None] = mapped_column(
         String(300),
+        nullable=True
+    )
+
+    # Hash del refresh token activo — al rotar/logout se invalida el anterior
+    refresh_jti: Mapped[str | None] = mapped_column(
+        String(64),
         nullable=True
     )
 

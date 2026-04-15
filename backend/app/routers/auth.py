@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
@@ -7,6 +7,7 @@ from app.core.security import (
     create_access_token, create_refresh_token, decode_token
 )
 from app.core.dependencies import get_current_user
+from app.core.limiter import limiter
 from app.models.user import User, RolEnum
 from app.schemas.auth import (
     RegisterRequest, LoginRequest, TokenResponse,
@@ -27,6 +28,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
         select(User).where(User.celular == data.celular))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="El celular ya esta registrado")
+
     user = User(
         celular=data.celular,
         email=data.email.lower() if data.email else None,
@@ -38,8 +40,12 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.flush()
     await db.refresh(user)
+
     access_token = create_access_token({"sub": str(user.id), "rol": user.rol.value})
-    refresh_token = create_refresh_token({"sub": str(user.id)})
+    refresh_token, jti = create_refresh_token({"sub": str(user.id)})
+    user.refresh_jti = jti
+    await db.commit()
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -51,7 +57,8 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, data: LoginRequest, db: AsyncSession = Depends(get_db)):
     login_val = data.login.strip()
     is_email = "@" in login_val
     if is_email:
@@ -68,8 +75,12 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+
     access_token = create_access_token({"sub": str(user.id), "rol": user.rol.value})
-    refresh_token = create_refresh_token({"sub": str(user.id)})
+    refresh_token, jti = create_refresh_token({"sub": str(user.id)})
+    user.refresh_jti = jti
+    await db.commit()
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -85,13 +96,24 @@ async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
     payload = decode_token(data.refresh_token)
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Refresh token invalido")
+
+    jti = payload.get("jti")
     result = await db.execute(
         select(User).where(User.id == payload["sub"], User.activo == True))
     user = result.scalar_one_or_none()
+
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
+
+    # Verificar que el jti del token coincida con el guardado en BD
+    if not jti or user.refresh_jti != jti:
+        raise HTTPException(status_code=401, detail="Refresh token revocado o inválido")
+
     access_token = create_access_token({"sub": str(user.id), "rol": user.rol.value})
-    new_refresh = create_refresh_token({"sub": str(user.id)})
+    new_refresh, new_jti = create_refresh_token({"sub": str(user.id)})
+    user.refresh_jti = new_jti  # rotación — el token anterior queda inválido
+    await db.commit()
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh,
@@ -100,6 +122,19 @@ async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
         email=user.email,
         celular=user.celular,
     )
+
+
+@router.post("/logout", status_code=204)
+async def logout(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Invalida el refresh token del usuario. El access token expirará por su propio TTL."""
+    result = await db.execute(select(User).where(User.id == current_user["id"]))
+    user = result.scalar_one_or_none()
+    if user:
+        user.refresh_jti = None
+        await db.commit()
 
 
 @router.get("/me", response_model=UserResponse)

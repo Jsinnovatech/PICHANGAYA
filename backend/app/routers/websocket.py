@@ -1,11 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from app.core.security import decode_token
 from typing import Dict
 import json
 
 router = APIRouter(tags=["WebSocket"])
-
-# Mapa de conexiones activas: {reserva_id: [websockets]}
-active_connections: Dict[str, list] = {}
 
 
 class ConnectionManager:
@@ -17,7 +15,8 @@ class ConnectionManager:
         self.connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.connections.remove(websocket)
+        if websocket in self.connections:
+            self.connections.remove(websocket)
 
     async def broadcast(self, message: dict):
         for connection in self.connections:
@@ -31,13 +30,26 @@ manager = ConnectionManager()
 
 
 @router.websocket("/ws/timers")
-async def websocket_timers(websocket: WebSocket):
-    """WebSocket para timers en tiempo real. Admin conecta y recibe eventos de partidos."""
+async def websocket_timers(websocket: WebSocket, token: str = ""):
+    """WebSocket para timers en tiempo real. Requiere token JWT válido como query param."""
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    payload = decode_token(token)
+    if payload is None or payload.get("type") != "access":
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    rol = payload.get("rol", "")
+    if rol not in ("admin", "super_admin"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await manager.connect(websocket)
     try:
         while True:
             data = await websocket.receive_text()
-            # Eco de ping para mantener la conexión viva
             if data == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:

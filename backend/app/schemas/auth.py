@@ -31,8 +31,22 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v):
-        if len(v) < 6:
-            raise ValueError("La contraseña debe tener al menos 6 caracteres")
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("La contraseña debe contener al menos un número")
+        return v
+
+    @field_validator("dni")
+    @classmethod
+    def validate_dni(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if v == '':
+            return None
+        if not re.match(r'^\d{8}$', v):
+            raise ValueError("El DNI debe tener exactamente 8 dígitos numéricos")
         return v
 
 
