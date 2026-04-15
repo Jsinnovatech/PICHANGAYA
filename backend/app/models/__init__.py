@@ -11,4 +11,4 @@ from app.models.comprobante import Comprobante
 from app.models.notificacion import Notificacion
 from app.models.configuracion import Configuracion
 from app.models.suscripcion import Suscripcion
-# Nuevo modelo de suscripciones de admins
+from app.models.plan_config import PlanConfig
