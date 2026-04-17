@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
 
@@ -30,6 +31,8 @@ class FcmService {
   );
 
   Future<void> init() async {
+    if (kIsWeb) return;
+
     // 1. Crear canal Android
     await _localNotif
         .resolvePlatformSpecificImplementation<
@@ -103,6 +106,7 @@ class FcmService {
 
   /// Llamar en logout para limpiar el token del backend
   Future<void> limpiarToken() async {
+    if (kIsWeb) return;
     try {
       await ApiClient().dio.patch(
         '/auth/fcm-token',
