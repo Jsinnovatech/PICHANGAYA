@@ -94,112 +94,131 @@ async def admin_dashboard(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    import asyncio
     import calendar
     from datetime import datetime, timezone, timedelta, date as date_type
-    from app.models.pago import MetodoPagoEnum
-    # Usar hora de Lima (UTC-5) para que "hoy" coincida con la fecha local del negocio
+
     LIMA_TZ = timezone(timedelta(hours=-5))
     hoy = datetime.now(LIMA_TZ).date()
-
-    # ── Stats básicos ────────────────────────────────────────────
-    reservas_hoy = (await db.execute(
-        select(func.count(Reserva.id)).where(Reserva.fecha == hoy)
-    )).scalar() or 0
-
-    reservas_pendientes = (await db.execute(
-        select(func.count(Reserva.id)).where(Reserva.estado == EstadoReservaEnum.pending)
-    )).scalar() or 0
-
-    ingresos_hoy = float((await db.execute(
-        select(func.sum(Pago.monto)).where(
-            Pago.estado == EstadoPagoEnum.verificado,
-            func.date(Pago.created_at) == hoy
-        )
-    )).scalar() or 0)
-
-    total_clientes = (await db.execute(
-        select(func.count(User.id)).where(User.rol == RolEnum.cliente, User.activo == True)
-    )).scalar() or 0
-
-    pagos_pendientes = (await db.execute(
-        select(func.count(Pago.id)).where(Pago.estado == EstadoPagoEnum.pendiente)
-    )).scalar() or 0
-
-    total_reservas = (await db.execute(
-        select(func.count(Reserva.id))
-    )).scalar() or 0
-
     primer_dia_mes = hoy.replace(day=1)
-    ingresos_mes = float((await db.execute(
-        select(func.sum(Pago.monto)).where(
+
+    # ── Todos los stats en paralelo (una sola ida a Railway) ─────
+    (
+        reservas_hoy_r,
+        reservas_pendientes_r,
+        ingresos_hoy_r,
+        total_clientes_r,
+        pagos_pendientes_r,
+        total_reservas_r,
+        ingresos_mes_r,
+        metodo_rows_r,
+        ultimas_reservas_r,
+    ) = await asyncio.gather(
+        db.execute(select(func.count(Reserva.id)).where(Reserva.fecha == hoy)),
+        db.execute(select(func.count(Reserva.id)).where(Reserva.estado == EstadoReservaEnum.pending)),
+        db.execute(select(func.sum(Pago.monto)).where(
+            Pago.estado == EstadoPagoEnum.verificado,
+            func.date(Pago.created_at) == hoy,
+        )),
+        db.execute(select(func.count(User.id)).where(User.rol == RolEnum.cliente, User.activo == True)),
+        db.execute(select(func.count(Pago.id)).where(Pago.estado == EstadoPagoEnum.pendiente)),
+        db.execute(select(func.count(Reserva.id))),
+        db.execute(select(func.sum(Pago.monto)).where(
             Pago.estado == EstadoPagoEnum.verificado,
             func.date(Pago.created_at) >= primer_dia_mes,
-            func.date(Pago.created_at) <= hoy
-        )
-    )).scalar() or 0)
+            func.date(Pago.created_at) <= hoy,
+        )),
+        db.execute(
+            select(Pago.metodo, func.count(Pago.id), func.sum(Pago.monto))
+            .where(Pago.estado == EstadoPagoEnum.verificado)
+            .group_by(Pago.metodo)
+        ),
+        db.execute(select(Reserva).order_by(Reserva.created_at.desc()).limit(20)),
+    )
 
-    # ── Pagos por método ─────────────────────────────────────────
-    metodo_rows = (await db.execute(
-        select(Pago.metodo, func.count(Pago.id), func.sum(Pago.monto))
-        .where(Pago.estado == EstadoPagoEnum.verificado)
-        .group_by(Pago.metodo)
-    )).fetchall()
+    reservas_hoy      = reservas_hoy_r.scalar() or 0
+    reservas_pendientes = reservas_pendientes_r.scalar() or 0
+    ingresos_hoy      = float(ingresos_hoy_r.scalar() or 0)
+    total_clientes    = total_clientes_r.scalar() or 0
+    pagos_pendientes  = pagos_pendientes_r.scalar() or 0
+    total_reservas    = total_reservas_r.scalar() or 0
+    ingresos_mes      = float(ingresos_mes_r.scalar() or 0)
+    metodo_rows       = metodo_rows_r.fetchall()
+    ultimas_reservas  = ultimas_reservas_r.scalars().all()
+
     pagos_por_metodo = [
         {"metodo": row[0].value, "cantidad": row[1], "total": float(row[2] or 0)}
         for row in metodo_rows
     ]
 
-    # ── Reservas por mes (últimos 6 meses) ───────────────────────
-    reservas_por_mes = []
+    # ── Reservas por mes (últimos 6 meses) — 1 query ─────────────
+    meses_info = []
     for i in range(5, -1, -1):
-        year = hoy.year
+        year  = hoy.year
         month = hoy.month - i
         while month <= 0:
             month += 12
-            year -= 1
+            year  -= 1
         primer = date_type(year, month, 1)
         ultimo = date_type(year, month, calendar.monthrange(year, month)[1])
-        cantidad = (await db.execute(
-            select(func.count(Reserva.id)).where(
-                Reserva.fecha >= primer,
-                Reserva.fecha <= ultimo,
-                Reserva.estado != EstadoReservaEnum.canceled
-            )
-        )).scalar() or 0
-        reservas_por_mes.append({"mes": primer.strftime("%b"), "cantidad": cantidad})
+        meses_info.append((primer, ultimo))
 
-    # ── Últimas 20 reservas ──────────────────────────────────────
-    ultimas_reservas = (await db.execute(
-        select(Reserva).order_by(Reserva.created_at.desc()).limit(20)
+    fecha_inicio_rango = meses_info[0][0]
+    fecha_fin_rango    = meses_info[-1][1]
+
+    reservas_fechas = (await db.execute(
+        select(Reserva.fecha).where(
+            Reserva.fecha >= fecha_inicio_rango,
+            Reserva.fecha <= fecha_fin_rango,
+            Reserva.estado != EstadoReservaEnum.canceled,
+        )
     )).scalars().all()
 
-    ultimas_lista = []
-    for r in ultimas_reservas:
-        cliente = (await db.execute(select(User).where(User.id == r.cliente_id))).scalar_one_or_none()
-        cancha = (await db.execute(select(Cancha).where(Cancha.id == r.cancha_id))).scalar_one_or_none()
-        ultimas_lista.append({
-            "codigo": r.codigo,
-            "cliente": cliente.nombre if cliente else "—",
-            "cancha": cancha.nombre if cancha else "—",
-            "fecha": str(r.fecha),
-            "hora": str(r.hora_inicio)[:5],
-            "estado": r.estado.value,
-            "monto": float(r.precio_total)
-        })
+    reservas_por_mes = [
+        {"mes": primer.strftime("%b"), "cantidad": sum(1 for f in reservas_fechas if primer <= f <= ultimo)}
+        for primer, ultimo in meses_info
+    ]
+
+    # ── Últimas reservas: batch lookup de clientes y canchas ─────
+    if ultimas_reservas:
+        cliente_ids = list({r.cliente_id for r in ultimas_reservas})
+        cancha_ids  = list({r.cancha_id  for r in ultimas_reservas})
+        clientes_rows, canchas_rows = await asyncio.gather(
+            db.execute(select(User).where(User.id.in_(cliente_ids))),
+            db.execute(select(Cancha).where(Cancha.id.in_(cancha_ids))),
+        )
+        clientes_map = {u.id: u for u in clientes_rows.scalars().all()}
+        canchas_map  = {c.id: c for c in canchas_rows.scalars().all()}
+    else:
+        clientes_map = {}
+        canchas_map  = {}
+
+    ultimas_lista = [
+        {
+            "codigo":  r.codigo,
+            "cliente": clientes_map[r.cliente_id].nombre if r.cliente_id in clientes_map else "—",
+            "cancha":  canchas_map[r.cancha_id].nombre   if r.cancha_id  in canchas_map  else "—",
+            "fecha":   str(r.fecha),
+            "hora":    str(r.hora_inicio)[:5],
+            "estado":  r.estado.value,
+            "monto":   float(r.precio_total),
+        }
+        for r in ultimas_reservas
+    ]
 
     return {
         "stats": {
-            "reservas_hoy": reservas_hoy,
+            "reservas_hoy":        reservas_hoy,
             "reservas_pendientes": reservas_pendientes,
-            "ingresos_hoy": ingresos_hoy,
-            "total_clientes": total_clientes,
-            "pagos_pendientes": pagos_pendientes,
-            "total_reservas": total_reservas,
-            "ingresos_mes": ingresos_mes,
+            "ingresos_hoy":        ingresos_hoy,
+            "total_clientes":      total_clientes,
+            "pagos_pendientes":    pagos_pendientes,
+            "total_reservas":      total_reservas,
+            "ingresos_mes":        ingresos_mes,
         },
         "pagos_por_metodo": pagos_por_metodo,
         "reservas_por_mes": reservas_por_mes,
-        "ultimas_reservas": ultimas_lista
+        "ultimas_reservas": ultimas_lista,
     }
 
 
@@ -239,22 +258,42 @@ async def admin_get_reservas(
             detail=f"Error al consultar la base de datos: {str(e)}"
         )
 
+    if not reservas:
+        return []
+
+    import asyncio
+
+    # Batch queries en paralelo — sin N+1
+    reserva_ids = [r.id for r in reservas]
+    cliente_ids = list({r.cliente_id for r in reservas})
+    cancha_ids  = list({r.cancha_id  for r in reservas})
+
+    clientes_rows, canchas_rows, pagos_rows = await asyncio.gather(
+        db.execute(select(User).where(User.id.in_(cliente_ids))),
+        db.execute(select(Cancha).where(Cancha.id.in_(cancha_ids))),
+        db.execute(select(Pago).where(Pago.reserva_id.in_(reserva_ids))),
+    )
+    clientes_map = {u.id: u for u in clientes_rows.scalars().all()}
+    canchas_map  = {c.id: c for c in canchas_rows.scalars().all()}
+
+    pagos_map: dict = {}
+    for pago in pagos_rows.scalars().all():
+        pagos_map.setdefault(pago.reserva_id, pago)
+
+    local_ids = list({c.local_id for c in canchas_map.values()})
+    locales_map = {
+        l.id: l for l in (await db.execute(
+            select(Local).where(Local.id.in_(local_ids))
+        )).scalars().all()
+    } if local_ids else {}
+
     respuesta = []
     for reserva in reservas:
         try:
-            cliente_result = await db.execute(select(User).where(User.id == reserva.cliente_id))
-            cliente = cliente_result.scalar_one_or_none()
-
-            cancha_result = await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))
-            cancha = cancha_result.scalar_one_or_none()
-
-            local = None
-            if cancha:
-                local_result = await db.execute(select(Local).where(Local.id == cancha.local_id))
-                local = local_result.scalar_one_or_none()
-
-            pago_result = await db.execute(select(Pago).where(Pago.reserva_id == reserva.id))
-            pago = pago_result.scalars().first()
+            cliente = clientes_map.get(reserva.cliente_id)
+            cancha  = canchas_map.get(reserva.cancha_id)
+            local   = locales_map.get(cancha.local_id) if cancha else None
+            pago    = pagos_map.get(reserva.id)
 
             respuesta.append(ReservaAdminResponse(
                 id=reserva.id,
