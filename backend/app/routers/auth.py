@@ -35,8 +35,6 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="El celular ya esta registrado")
 
-    refresh_token, jti = create_refresh_token({"sub": "temp"})  # jti provisional
-
     user = User(
         celular=data.celular,
         email=data.email.lower() if data.email else None,

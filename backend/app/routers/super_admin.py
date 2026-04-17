@@ -105,25 +105,19 @@ async def super_admin_dashboard(
     current_user: dict = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Dashboard completo del super admin con todas las estadísticas del sistema.
-    """
     ahora = datetime.now(timezone.utc)
 
-    # Total complejos deportivos registrados
     locales_result = await db.execute(
         select(func.count(Local.id)).where(Local.activo == True)
     )
     total_locales = locales_result.scalar() or 0
 
-    # Total clientes registrados y activos
     clientes_result = await db.execute(
         select(func.count(User.id))
         .where(User.rol == RolEnum.cliente, User.activo == True)
     )
     total_clientes = clientes_result.scalar() or 0
 
-    # Total admins registrados
     admins_result = await db.execute(
         select(func.count(User.id))
         .where(User.rol == RolEnum.admin, User.activo == True)
@@ -140,21 +134,18 @@ async def super_admin_dashboard(
     )
     admins_con_suscripcion = admins_activos_result.scalar() or 0
 
-    # Suscripciones pendientes de verificar
     pendientes_result = await db.execute(
         select(func.count(Suscripcion.id))
         .where(Suscripcion.estado == EstadoSuscripcionEnum.pendiente)
     )
     suscripciones_pendientes = pendientes_result.scalar() or 0
 
-    # Total recaudado histórico
     total_recaudado_result = await db.execute(
         select(func.sum(Suscripcion.monto))
         .where(Suscripcion.estado == EstadoSuscripcionEnum.activo)
     )
     total_recaudado = float(total_recaudado_result.scalar() or 0)
 
-    # Recaudado este mes
     inicio_mes = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     recaudado_mes_result = await db.execute(
         select(func.sum(Suscripcion.monto))
@@ -165,7 +156,6 @@ async def super_admin_dashboard(
     )
     recaudado_mes = float(recaudado_mes_result.scalar() or 0)
 
-    # Recaudado mes anterior
     inicio_mes_anterior = (inicio_mes - timedelta(days=1)).replace(day=1)
     recaudado_mes_anterior_result = await db.execute(
         select(func.sum(Suscripcion.monto))
@@ -177,7 +167,6 @@ async def super_admin_dashboard(
     )
     recaudado_mes_anterior = float(recaudado_mes_anterior_result.scalar() or 0)
 
-    # Últimas 5 suscripciones aprobadas
     ultimas_suscripciones_result = await db.execute(
         select(Suscripcion)
         .where(Suscripcion.estado == EstadoSuscripcionEnum.activo)
@@ -223,9 +212,6 @@ async def listar_admins(
     current_user: dict = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Lista todos los admins con su estado de suscripción.
-    """
     ahora = datetime.now(timezone.utc)
 
     result = await db.execute(
@@ -237,7 +223,6 @@ async def listar_admins(
 
     respuesta = []
     for admin in admins:
-        # Buscar suscripción activa
         sus_result = await db.execute(
             select(Suscripcion)
             .where(
@@ -366,15 +351,10 @@ async def suscripciones_pendientes(
     current_user: dict = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Lista todas las suscripciones pendientes de verificar.
-    El super admin las revisa y aprueba/rechaza.
-    """
     result = await db.execute(
         select(Suscripcion)
         .where(Suscripcion.estado == EstadoSuscripcionEnum.pendiente)
         .order_by(Suscripcion.created_at.asc())
-        # Las más antiguas primero — FIFO
     )
     suscripciones = result.scalars().all()
 
@@ -405,11 +385,6 @@ async def verificar_suscripcion(
     current_user: dict = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Super admin aprueba o rechaza una suscripción.
-    Si aprueba → activa al admin por 30 días + notificación.
-    Si rechaza → notifica al admin con el motivo.
-    """
     result = await db.execute(
         select(Suscripcion).where(Suscripcion.id == suscripcion_id)
     )
@@ -423,12 +398,10 @@ async def verificar_suscripcion(
         suscripcion.estado = EstadoSuscripcionEnum.activo
         suscripcion.fecha_pago = ahora
         suscripcion.fecha_vencimiento = ahora + timedelta(days=30)
-        # 30 días desde ahora
         suscripcion.verificado_por = uuid.UUID(current_user["id"])
 
         fecha_venc_str = suscripcion.fecha_vencimiento.strftime("%d/%m/%Y")
 
-        # Notificar al admin
         await notif_suscripcion_aprobada(
             db=db,
             admin_id=suscripcion.admin_id,
@@ -443,7 +416,6 @@ async def verificar_suscripcion(
         motivo = data.motivo or "No especificado"
         suscripcion.motivo_rechazo = motivo
 
-        # Notificar al admin
         await notif_suscripcion_rechazada(
             db=db,
             admin_id=suscripcion.admin_id,

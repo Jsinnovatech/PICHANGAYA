@@ -27,12 +27,10 @@ class User(Base):
         index=True
     )
 
-    # ── NUEVO: Email como método principal de login ───────────
     email: Mapped[str | None] = mapped_column(
         String(150),
         unique=True,
         nullable=True,
-        # nullable=True para no romper usuarios existentes
         index=True
     )
 
