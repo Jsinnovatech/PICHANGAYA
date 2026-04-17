@@ -15,6 +15,7 @@ class _State extends State<ClientLoginScreen> {
   final _loginCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
+  bool _verPass = false;
   String? _error;
 
   Future<void> _login() async {
@@ -44,9 +45,11 @@ class _State extends State<ClientLoginScreen> {
       }));
       if (!mounted) return;
       context.go('/home');
-    } catch (_) {
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      final esRed = msg.contains('connection') || msg.contains('timeout') || msg.contains('socket');
       setState(() {
-        _error = 'Correo/celular o contraseña incorrectos';
+        _error = esRed ? 'Sin conexión al servidor. ¿Está el backend activo?' : 'Correo/celular o contraseña incorrectos';
       });
     } finally {
       if (mounted)
@@ -130,11 +133,19 @@ class _State extends State<ClientLoginScreen> {
                   const SizedBox(height: 6),
                   TextField(
                     controller: _passCtrl,
-                    obscureText: true,
-                    decoration: const InputDecoration(
+                    obscureText: !_verPass,
+                    decoration: InputDecoration(
                       hintText: '••••••••',
-                      prefixIcon: Icon(Icons.lock_outline,
+                      prefixIcon: const Icon(Icons.lock_outline,
                           color: AppColors.texto2, size: 20),
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(() => _verPass = !_verPass),
+                        icon: Icon(
+                          _verPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          color: AppColors.texto2,
+                          size: 20,
+                        ),
+                      ),
                     ),
                     onSubmitted: (_) => _login(),
                   ),

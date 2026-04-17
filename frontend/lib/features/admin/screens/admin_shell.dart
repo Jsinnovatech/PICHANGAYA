@@ -1,3 +1,4 @@
+import 'package:pichangaya/core/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,6 +12,7 @@ import 'package:pichangaya/features/admin/pages/admin_clientes_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_timers_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_facturacion_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_canchas_page.dart';
+import 'package:pichangaya/features/admin/pages/admin_suscripcion_page.dart';
 
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
@@ -33,6 +35,7 @@ class _State extends State<AdminShell> {
     {'icon': '⏱️', 'label': 'Timers'},
     {'icon': '🧾', 'label': 'Facturación'},
     {'icon': '🏟️', 'label': 'Canchas'},
+    {'icon': '💎', 'label': 'Suscripción'},
   ];
 
   List<Widget> get _pages => [
@@ -44,6 +47,7 @@ class _State extends State<AdminShell> {
     const AdminTimersPage(),
     const AdminFacturacionPage(),
     const AdminCanchasPage(),
+    const AdminSuscripcionPage(),
   ];
 
   @override
@@ -142,6 +146,7 @@ class _State extends State<AdminShell> {
             ),
             child: OutlinedButton(
               onPressed: () async {
+                await FcmService.instance.limpiarToken();
                 await ApiClient().logout();
                 if (mounted) context.go('/entry');
               },
@@ -190,6 +195,7 @@ class _State extends State<AdminShell> {
       '⏱️ Timers',
       '🧾 Facturación',
       '🏟️ Canchas',
+      '💎 Suscripción',
     ];
     return Container(
       height: 56,

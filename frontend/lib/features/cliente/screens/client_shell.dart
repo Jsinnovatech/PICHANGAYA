@@ -1,3 +1,4 @@
+import 'package:pichangaya/core/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -255,6 +256,7 @@ class _State extends State<ClientShell> {
               color: AppColors.rojo,
               onTap: () async {
                 Navigator.pop(context);
+                await FcmService.instance.limpiarToken();
                 await ApiClient().logout();
                 if (mounted) context.go('/entry');
               },

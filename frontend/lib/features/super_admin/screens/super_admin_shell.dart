@@ -1,3 +1,4 @@
+import 'package:pichangaya/core/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,6 +7,10 @@ import 'package:pichangaya/shared/api/api_client.dart';
 import 'package:pichangaya/features/super_admin/pages/super_admin_dashboard_page.dart';
 import 'package:pichangaya/features/super_admin/pages/super_admin_admins_page.dart';
 import 'package:pichangaya/features/super_admin/pages/super_admin_suscripciones_page.dart';
+import 'package:pichangaya/features/super_admin/pages/super_admin_historial_pagos_page.dart';
+import 'package:pichangaya/features/super_admin/pages/super_admin_alertas_page.dart';
+import 'package:pichangaya/features/super_admin/pages/super_admin_planes_page.dart';
+import 'package:pichangaya/features/super_admin/pages/super_admin_reportes_page.dart';
 
 class SuperAdminShell extends StatefulWidget {
   const SuperAdminShell({super.key});
@@ -15,34 +20,86 @@ class SuperAdminShell extends StatefulWidget {
 
 class _State extends State<SuperAdminShell> {
   int _pageIndex = 0;
+  bool _sidebarOpen = false;
+  String _nombreSuperAdmin = 'Super Admin';
 
   static const _navItems = [
     {'icon': '📊', 'label': 'Dashboard'},
     {'icon': '👥', 'label': 'Admins'},
     {'icon': '💳', 'label': 'Suscripciones'},
+    {'icon': '📋', 'label': 'Historial Pagos'},
+    {'icon': '⚠️', 'label': 'Alertas'},
+    {'icon': '💎', 'label': 'Planes'},
+    {'icon': '📈', 'label': 'Reportes'},
   ];
 
   static const _pages = [
     SuperAdminDashboardPage(),
     SuperAdminAdminsPage(),
     SuperAdminSuscripcionesPage(),
+    SuperAdminHistorialPagosPage(),
+    SuperAdminAlertasPage(),
+    SuperAdminPlanesPage(),
+    SuperAdminReportesPage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarNombre();
+  }
+
+  Future<void> _cargarNombre() async {
+    try {
+      final res = await ApiClient().dio.get('/auth/me');
+      if (mounted) setState(() => _nombreSuperAdmin = res.data['nombre'] ?? 'Super Admin');
+    } catch (_) {}
+  }
 
   void _goPage(int i) => setState(() {
         _pageIndex = i;
+        _sidebarOpen = false;
       });
 
   @override
   Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width > 900;
+
+    if (isWide) {
+      return Scaffold(
+        backgroundColor: AppColors.negro,
+        body: Row(children: [
+          _buildSidebar(),
+          Expanded(child: Column(children: [
+            _buildTopBar(),
+            Expanded(child: _pages[_pageIndex]),
+          ])),
+        ]),
+      );
+    }
+
+    // Mobile: overlay drawer
     return Scaffold(
       backgroundColor: AppColors.negro,
-      body: Row(children: [
-        _buildSidebar(),
-        Expanded(
-            child: Column(children: [
+      body: Stack(children: [
+        Column(children: [
           _buildTopBar(),
           Expanded(child: _pages[_pageIndex]),
-        ])),
+        ]),
+        if (_sidebarOpen) ...[
+          GestureDetector(
+            onTap: () => setState(() => _sidebarOpen = false),
+            child: Container(
+              color: Colors.black54,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
+          Positioned(
+            left: 0, top: 0, bottom: 0,
+            child: _buildSidebar(),
+          ),
+        ],
       ]),
     );
   }
@@ -59,8 +116,7 @@ class _State extends State<SuperAdminShell> {
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: AppColors.borde)),
             ),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('⚽ PICHANGAYA',
                   style: GoogleFonts.bebasNeue(
                     fontSize: 20,
@@ -76,11 +132,12 @@ class _State extends State<SuperAdminShell> {
             ]),
           ),
           Expanded(
-              child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            itemCount: _navItems.length,
-            itemBuilder: (_, i) => _navItem(i),
-          )),
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              itemCount: _navItems.length,
+              itemBuilder: (_, i) => _navItem(i),
+            ),
+          ),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: const BoxDecoration(
@@ -88,14 +145,14 @@ class _State extends State<SuperAdminShell> {
             ),
             child: OutlinedButton(
               onPressed: () async {
+                await FcmService.instance.limpiarToken();
                 await ApiClient().logout();
                 if (mounted) context.go('/entry');
               },
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 36),
               ),
-              child: const Text('🚪 Cerrar Sesión',
-                  style: TextStyle(fontSize: 13)),
+              child: const Text('🚪 Cerrar Sesión', style: TextStyle(fontSize: 13)),
             ),
           ),
         ]),
@@ -109,10 +166,8 @@ class _State extends State<SuperAdminShell> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color:
-              active ? AppColors.amarillo.withOpacity(0.1) : Colors.transparent,
-          border: Border(
-              left: BorderSide(
+          color: active ? AppColors.amarillo.withOpacity(0.1) : Colors.transparent,
+          border: Border(left: BorderSide(
             color: active ? AppColors.amarillo : Colors.transparent,
             width: 3,
           )),
@@ -132,15 +187,23 @@ class _State extends State<SuperAdminShell> {
   }
 
   Widget _buildTopBar() {
-    final titles = ['📊 Dashboard', '👥 Admins', '💳 Suscripciones'];
+    final titles = ['📊 Dashboard', '👥 Admins', '💳 Suscripciones', '📋 Historial Pagos', '⚠️ Alertas', '💎 Planes', '📈 Reportes'];
     return Container(
       height: 56,
       decoration: const BoxDecoration(
         color: Color(0xE60A0F0D),
         border: Border(bottom: BorderSide(color: AppColors.borde)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(children: [
+        if (MediaQuery.of(context).size.width <= 900)
+          IconButton(
+            icon: Icon(
+              _sidebarOpen ? Icons.close : Icons.menu,
+              color: AppColors.texto,
+            ),
+            onPressed: () => setState(() => _sidebarOpen = !_sidebarOpen),
+          ),
         Text(titles[_pageIndex],
             style: GoogleFonts.bebasNeue(
               fontSize: 18,
@@ -155,8 +218,12 @@ class _State extends State<SuperAdminShell> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.amarillo.withOpacity(0.4)),
           ),
-          child: const Text('👑 Super Admin',
-              style: TextStyle(fontSize: 12, color: AppColors.amarillo)),
+          child: Row(children: [
+            const Icon(Icons.workspace_premium, color: AppColors.amarillo, size: 14),
+            const SizedBox(width: 6),
+            Text(_nombreSuperAdmin,
+                style: const TextStyle(fontSize: 12, color: AppColors.amarillo, fontWeight: FontWeight.w600)),
+          ]),
         ),
       ]),
     );

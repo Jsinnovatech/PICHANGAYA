@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -33,6 +34,12 @@ class Settings(BaseSettings):
     # API key de imgbb para subir fotos de vouchers
     IMGBB_API_KEY: str = ""
 
+    # Número de Yape para recibir pagos de suscripción
+    YAPE_NUMERO: str = ""
+
+    # Ruta al JSON de cuenta de servicio de Firebase (para enviar pushes FCM)
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = "firebase-service-account.json"
+
     # Token de Nubefact para facturación SUNAT — se configura en Fase 4
     NUBEFACT_TOKEN: str = ""
 
@@ -43,6 +50,13 @@ class Settings(BaseSettings):
     EMPRESA_RUC: str = ""
     EMPRESA_RAZON_SOCIAL: str = ""
     EMPRESA_DIRECCION: str = ""
+
+    @field_validator('SECRET_KEY')
+    @classmethod
+    def secret_key_min_length(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError('SECRET_KEY debe tener al menos 32 caracteres')
+        return v
 
     class Config:
         env_file = ".env"

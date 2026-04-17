@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "83990636031",
+    "project_id": "pichangaya-6d300",
+    "storage_bucket": "pichangaya-6d300.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:83990636031:android:f2107e573a6d42d51473ca",
+        "android_client_info": {
+          "package_name": "com.example.pichangaya"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3r2lHGRxH-y_j6t5MK13CQ1XXPAfiLY4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:83990636031:android:3e4c38131aff56351473ca",
+        "android_client_info": {
+          "package_name": "com.pichangaya.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3r2lHGRxH-y_j6t5MK13CQ1XXPAfiLY4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
 import 'package:pichangaya/core/constants/api_constants.dart';
+import 'dart:convert';
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
@@ -34,11 +35,19 @@ class _State extends State<AdminLoginScreen> {
         refresh: res.data['refresh_token'],
       );
       await ApiClient().saveRol(rol);
+      await ApiClient().saveUser(jsonEncode({
+        'nombre': res.data['nombre'] ?? '',
+        'email': res.data['email'] ?? '',
+        'celular': res.data['celular'] ?? '',
+        'dni': '',
+      }));
       if (!mounted) return;
       if (rol == 'super_admin') context.go('/super-admin');
       else                      context.go('/admin');
-    } catch (_) {
-      setState(() { _error = 'Celular o contraseña incorrectos'; });
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      final esRed = msg.contains('connection') || msg.contains('timeout') || msg.contains('socket');
+      setState(() { _error = esRed ? 'Sin conexión al servidor. ¿Está el backend activo?' : 'Celular o contraseña incorrectos'; });
     } finally {
       if (mounted) setState(() { _loading = false; });
     }

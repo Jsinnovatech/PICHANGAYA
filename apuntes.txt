@@ -1,3 +1,23 @@
+============================================================
+FIX RESERVAS — EJECUTAR UNA SOLA VEZ (08/04/2026)
+============================================================
+1. Activar venv y aplicar fix del enum en BD:
+   cd backend
+   venv\Scripts\activate
+   python fix_notif_enum.py
+
+2. Confirmar que dice: "reserva_cancelada_por_cliente agregado"
+
+3. Levantar backend normal:
+   uvicorn app.main:app --reload --port 8000
+
+BUGS CORREGIDOS:
+- Cancelacion de reserva ya no falla (notificacion es no-critica)
+- Error al cargar reservas: timeout aumentado a 30s
+- UniqueConstraint: ya no bloquea reservas de slots cancelados
+- Nuevo endpoint DELETE /admin/reservas/{id}
+============================================================
+
 PARA LEVANATR EL BACKEND DE PICHANGAYA
 
 venv\Scripts\activate
@@ -7,6 +27,11 @@ Lanza el emulador Pixel 7----
 Abre una terminal CMD nueva (o usa la misma) y corre:
 flutter emulators --launch Pixel_7
 
+PARA LEVANATR EL FRONTEND DE PICHANGAYA
+
+flutter run -d chrome --web-port 3000
+
+
 
 Corre la app
 Una vez el emulador esté listo, vuelve a la terminal del frontend y corre:
@@ -15,6 +40,11 @@ flutter run
 
 
 
+ quiero que me indiques paso a paso detalladamente de como hacer los pasos en firebase para la
+  obtencion de los archivos (google-services.json y firebase-service-account.json), sabuendo que no teno ni un proyecto
+ llamado pichangaya en firebase
+
+claude --resume 973b1141-dcd3-463f-9cfc-6c3ac8eb8d7c
 
 
 

@@ -23,14 +23,19 @@ router = APIRouter(prefix="/reservas", tags=["Reservas"])
 
 
 def str_a_time(hora_str: str) -> time_type:
-    partes = hora_str.split(":")
-    return time_type(int(partes[0]), int(partes[1]))
+    try:
+        partes = hora_str.split(":")
+        if len(partes) < 2:
+            raise ValueError
+        return time_type(int(partes[0]), int(partes[1]))
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail=f"Hora inválida: '{hora_str}'. Use formato HH:MM")
 
 
-async def generar_codigo_reserva(db: AsyncSession) -> str:
-    result = await db.execute(select(func.count(Reserva.id)))
-    total = result.scalar() or 0
-    return f"RES-{str(total + 1).zfill(6)}"
+def generar_codigo_reserva() -> str:
+    """Código único basado en UUID — sin race condition."""
+    import secrets
+    return f"RES-{secrets.token_hex(3).upper()}"
 
 
 @router.post("/", response_model=ReservaResponse, status_code=201)
@@ -76,7 +81,7 @@ async def crear_reserva(
     local = local_result.scalar_one_or_none()
 
     # ── Paso 4: Código de reserva ─────────────────────────────
-    codigo = await generar_codigo_reserva(db)
+    codigo = generar_codigo_reserva()
 
     # ── Paso 5: Crear reserva ─────────────────────────────────
     nueva_reserva = Reserva(
@@ -110,25 +115,34 @@ async def crear_reserva(
     # ── Paso 7: Flush con manejo de conflicto ─────────────────
     try:
         await db.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail=f"El horario {data.hora_inicio} del {data.fecha} ya está reservado"
-        )
+        # Puede ser conflicto de slot o colisión de código (muy raro)
+        if "uq_reserva_slot" in str(exc.orig):
+            raise HTTPException(
+                status_code=409,
+                detail=f"El horario {data.hora_inicio} del {data.fecha} ya está reservado"
+            )
+        # Colisión de código → reintentar con nuevo código
+        nueva_reserva.codigo = generar_codigo_reserva()
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="Error al generar reserva, intente de nuevo")
 
     # ── Paso 8: Commit ────────────────────────────────────────
     await db.commit()
     await db.refresh(nueva_reserva)
 
-    # ── Paso 9: Notificar al admin (no crítico) ───────────────
+    # ── Paso 9: Notificar al admin del local (no crítico) ─────
     try:
-        if local:
+        if local and local.admin_id:
             admin_result = await db.execute(
                 select(User).where(
-                    User.rol == "admin",
+                    User.id == local.admin_id,
                     User.activo == True
-                ).limit(1)
+                )
             )
             admin = admin_result.scalar_one_or_none()
             if admin:
@@ -260,13 +274,17 @@ async def cancelar_reserva(
         cliente_nombre = cliente.nombre if cliente else "Cliente"
         cancha_nombre = cancha.nombre if cancha else "Cancha"
 
-        admin_result = await db.execute(
-            select(User).where(
-                User.rol == "admin",
-                User.activo == True
-            ).limit(1)
-        )
-        admin = admin_result.scalar_one_or_none()
+        local_result2 = await db.execute(
+            select(Local).where(Local.id == cancha.local_id)
+        ) if cancha else None
+        local2 = local_result2.scalar_one_or_none() if local_result2 else None
+
+        admin = None
+        if local2 and local2.admin_id:
+            admin_result = await db.execute(
+                select(User).where(User.id == local2.admin_id, User.activo == True)
+            )
+            admin = admin_result.scalar_one_or_none()
 
         if admin:
             await notif_reserva_cancelada_por_cliente(

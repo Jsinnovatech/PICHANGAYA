@@ -7,12 +7,17 @@ from app.core.database import Base
 
 
 class PlanEnum(str, enum.Enum):
+    free     = "free"
+    # Plan gratuito — hasta 2 canchas, sin SUNAT
+    boleta   = "boleta"
+    # Plan Boleta S/.30/mes — boletas electrónicas SUNAT, canchas ilimitadas
+    factura  = "factura"
+    # Plan Factura S/.50/mes — facturas electrónicas SUNAT, canchas ilimitadas
+    completo = "completo"
+    # Plan Completo S/.60/mes — boletas + facturas SUNAT, canchas ilimitadas
+    # Valores legacy mantenidos por compatibilidad con registros anteriores
     basico   = "basico"
-    # Plan básico: S/.30/mes — entrega boleta simple
-    # El admin no necesita datos de RUC para facturar
     premium  = "premium"
-    # Plan premium: S/.50/mes — facturación electrónica SUNAT
-    # Permite emitir boletas y facturas electrónicas vía Nubefact
 
 
 class EstadoSuscripcionEnum(str, enum.Enum):

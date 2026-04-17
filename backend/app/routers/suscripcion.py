@@ -23,6 +23,67 @@ router = APIRouter(prefix="/suscripcion", tags=["Suscripcion"])
 
 
 # ══════════════════════════════════════════════
+# PLAN CATALOG
+# ══════════════════════════════════════════════
+
+PLANES_CATALOG = {
+    "boleta": {
+        "id": "boleta",
+        "nombre": "Plan Boleta",
+        "precio": 30.00,
+        "color": "azul",
+        "beneficios": [
+            "✅ Canchas ilimitadas",
+            "✅ Gestión completa de reservas",
+            "✅ Emisión de boletas electrónicas SUNAT",
+            "✅ Historial de pagos y clientes",
+            "✅ Panel de estadísticas",
+            "✅ Soporte por WhatsApp",
+        ],
+    },
+    "factura": {
+        "id": "factura",
+        "nombre": "Plan Factura",
+        "precio": 50.00,
+        "color": "verde",
+        "beneficios": [
+            "✅ Canchas ilimitadas",
+            "✅ Gestión completa de reservas",
+            "✅ Emisión de facturas electrónicas SUNAT",
+            "✅ Historial de pagos y clientes",
+            "✅ Panel de estadísticas",
+            "✅ Reportes exportables",
+            "✅ Soporte prioritario",
+        ],
+    },
+    "completo": {
+        "id": "completo",
+        "nombre": "Plan Completo",
+        "precio": 60.00,
+        "color": "naranja",
+        "beneficios": [
+            "✅ Canchas ilimitadas",
+            "✅ Gestión completa de reservas",
+            "✅ Boletas y facturas electrónicas SUNAT",
+            "✅ Historial de pagos y clientes",
+            "✅ Panel de estadísticas avanzadas",
+            "✅ Reportes exportables",
+            "✅ Soporte prioritario 24/7",
+            "⭐ Todo en un solo plan",
+        ],
+    },
+}
+
+MONTO_POR_PLAN = {
+    "boleta":   30.00,
+    "factura":  50.00,
+    "completo": 60.00,
+    "basico":   30.00,   # legacy
+    "premium":  50.00,   # legacy
+}
+
+
+# ══════════════════════════════════════════════
 # SCHEMAS
 # ══════════════════════════════════════════════
 
@@ -89,6 +150,20 @@ async def get_suscripcion_activa(
 # ══════════════════════════════════════════════
 # ENDPOINTS
 # ══════════════════════════════════════════════
+
+@router.get("/planes")
+async def get_planes(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Devuelve los 3 planes disponibles con sus beneficios y el número de Yape.
+    Flutter usa esto para mostrar las tarjetas de suscripción.
+    """
+    return {
+        "planes": list(PLANES_CATALOG.values()),
+        "yape_numero": settings.YAPE_NUMERO,
+    }
+
 
 @router.get("/mi-suscripcion", response_model=SuscripcionResponse | None)
 async def mi_suscripcion(
@@ -157,10 +232,13 @@ async def iniciar_pago_suscripcion(
         raise HTTPException(status_code=403, detail="Solo admins pueden suscribirse")
 
     # Validar plan
+    planes_validos = ["boleta", "factura", "completo", "basico", "premium"]
+    if data.plan not in planes_validos:
+        raise HTTPException(status_code=400, detail=f"Plan inválido. Use: {', '.join(planes_validos)}")
     try:
         plan_enum = PlanEnum(data.plan)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Plan inválido. Use 'basico' o 'premium'")
+        raise HTTPException(status_code=400, detail="Plan inválido")
 
     # Validar método de pago
     metodos_validos = ["yape", "plin", "transferencia"]
@@ -170,8 +248,21 @@ async def iniciar_pago_suscripcion(
             detail=f"Método inválido. Use: {', '.join(metodos_validos)}"
         )
 
+    # Bloquear si ya hay una suscripción pendiente sin voucher
+    pendiente_result = await db.execute(
+        select(Suscripcion).where(
+            Suscripcion.admin_id == uuid.UUID(current_user["id"]),
+            Suscripcion.estado == EstadoSuscripcionEnum.pendiente
+        )
+    )
+    if pendiente_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Ya tienes una suscripción pendiente. Sube el voucher o espera que sea procesada."
+        )
+
     # Determinar monto según plan
-    monto = 30.00 if plan_enum == PlanEnum.basico else 50.00
+    monto = MONTO_POR_PLAN.get(data.plan, 30.00)
 
     # Crear registro de suscripción pendiente
     nueva_suscripcion = Suscripcion(

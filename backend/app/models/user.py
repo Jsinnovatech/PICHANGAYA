@@ -62,6 +62,12 @@ class User(Base):
         nullable=True
     )
 
+    # Hash del refresh token activo — al rotar/logout se invalida el anterior
+    refresh_jti: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True
+    )
+
     activo: Mapped[bool] = mapped_column(
         Boolean,
         default=True

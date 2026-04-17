@@ -29,3 +29,5 @@ pichangaya/
 **/__pycache__/
 **/*.pyc
 **/*.pyo
+
+firebase-service-account.json

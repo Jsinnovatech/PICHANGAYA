@@ -128,13 +128,16 @@ async def subir_voucher(
         cancha = cancha_result.scalar_one_or_none()
 
         if cancha:
-            admin_result = await db.execute(
-                select(User).where(
-                    User.rol == "admin",
-                    User.activo == True
-                ).limit(1)
+            local_result = await db.execute(
+                select(Local).where(Local.id == cancha.local_id)
             )
-            admin = admin_result.scalar_one_or_none()
+            local = local_result.scalar_one_or_none()
+            admin = None
+            if local and local.admin_id:
+                admin_result = await db.execute(
+                    select(User).where(User.id == local.admin_id, User.activo == True)
+                )
+                admin = admin_result.scalar_one_or_none()
 
             if admin:
                 await notif_reserva_voucher_recibido(

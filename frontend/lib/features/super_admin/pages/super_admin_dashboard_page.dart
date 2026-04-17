@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
@@ -14,11 +15,19 @@ class _State extends State<SuperAdminDashboardPage> {
   List<dynamic> _ultimas = [];
   bool _loading = true;
   String? _error;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _cargar();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _cargar());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _cargar() async {

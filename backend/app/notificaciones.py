@@ -1,8 +1,12 @@
+import logging
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.notificacion import Notificacion, TipoNotificacionEnum
 from app.models.user import User
+from app.core.fcm import send_push
+
+logger = logging.getLogger(__name__)
 
 
 async def crear_notificacion(
@@ -14,9 +18,7 @@ async def crear_notificacion(
     data: dict | None = None
 ) -> Notificacion:
     """
-    Crea una notificación en la BD para un usuario.
-    En el futuro aquí también se enviará el push via FCM.
-    Por ahora solo guarda en BD — Flutter la lee al hacer polling.
+    Crea una notificación en la BD Y envía push FCM al dispositivo del usuario.
     """
     notif = Notificacion(
         id=uuid.uuid4(),
@@ -29,8 +31,22 @@ async def crear_notificacion(
         enviada_push=False
     )
     db.add(notif)
-    # No hacemos commit aquí — el caller lo hace junto con su operación
-    # Así si algo falla, la notificación tampoco se guarda (atómica)
+
+    # Enviar push si el usuario tiene token FCM registrado
+    try:
+        user_result = await db.execute(select(User).where(User.id == usuario_id))
+        user = user_result.scalar_one_or_none()
+        if user and user.fcm_token:
+            enviado = await send_push(
+                fcm_token=user.fcm_token,
+                titulo=titulo,
+                cuerpo=mensaje,
+                data=data,
+            )
+            notif.enviada_push = enviado
+    except Exception as e:
+        logger.warning(f"Push FCM no enviado (notificación en-app sí guardada): {e}")
+
     return notif
 
 

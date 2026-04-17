@@ -32,7 +32,10 @@ class ApiClient {
         handler.next(opts);
       },
       onError: (err, handler) async {
-        if (err.response?.statusCode == 401) {
+        final path = err.requestOptions.path;
+        if (err.response?.statusCode == 401 &&
+            !path.contains('/auth/login') &&
+            !path.contains('/auth/refresh')) {
           if (await _refreshToken()) {
             final token = await _storage.read(key: 'access_token');
             err.requestOptions.headers['Authorization'] = 'Bearer $token';

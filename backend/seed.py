@@ -126,6 +126,7 @@ async def seed():
 
         local1 = Local(
             id=uuid.uuid4(),
+            admin_id=admin_golazo.id,
             nombre="Complejo Deportivo El Golazo",
             direccion="Av. Revolución 1250, Collique",
             lat=-11.9012,   # coordenadas GPS de Collique/Comas
@@ -137,6 +138,7 @@ async def seed():
 
         local2 = Local(
             id=uuid.uuid4(),
+            admin_id=admin_sport.id,
             nombre="Canchas Sport Comas",
             direccion="Jr. Los Pinos 456, Comas",
             lat=-11.9085,
@@ -148,6 +150,7 @@ async def seed():
 
         local3 = Local(
             id=uuid.uuid4(),
+            admin_id=admin_sport.id,
             nombre="Arena Fútbol Club",
             direccion="Av. Tupac Amaru Km 11.5, Collique",
             lat=-11.8950,

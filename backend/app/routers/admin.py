@@ -14,6 +14,7 @@ from app.models.user import User, RolEnum
 from app.models.cancha import Cancha
 from app.models.local import Local
 from app.models.comprobante import Comprobante, EstadoComprobanteEnum
+from app.notificaciones import notif_reserva_confirmada, notif_reserva_rechazada
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -398,6 +399,12 @@ async def admin_verificar_pago(
     reserva_result = await db.execute(select(Reserva).where(Reserva.id == pago.reserva_id))
     reserva = reserva_result.scalar_one_or_none()
 
+    # ── Datos extra para la notificación ──────────────────────
+    cancha = None
+    if reserva:
+        cancha_result = await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))
+        cancha = cancha_result.scalar_one_or_none()
+
     if data.accion == "aprobar":
         pago.estado = EstadoPagoEnum.verificado
         pago.verificado_por = uuid.UUID(current_user["id"])
@@ -416,7 +423,31 @@ async def admin_verificar_pago(
     else:
         raise HTTPException(status_code=400, detail="Acción inválida. Use 'aprobar' o 'rechazar'")
 
+    # ── Commit principal (CRÍTICO — siempre se guarda) ─────────
     await db.commit()
+
+    # ── Notificar al cliente (no crítico) ──────────────────────
+    try:
+        if reserva:
+            if data.accion == "aprobar":
+                await notif_reserva_confirmada(
+                    db=db,
+                    cliente_id=reserva.cliente_id,
+                    codigo=reserva.codigo,
+                    fecha=str(reserva.fecha),
+                    hora=str(reserva.hora_inicio)[:5],
+                    cancha_nombre=cancha.nombre if cancha else "la cancha"
+                )
+            elif data.accion == "rechazar":
+                await notif_reserva_rechazada(
+                    db=db,
+                    cliente_id=reserva.cliente_id,
+                    codigo=reserva.codigo,
+                    motivo=data.motivo or "Pago no verificado"
+                )
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"Notificación al cliente no enviada (pago igual procesado): {e}")
 
     return {"mensaje": mensaje, "pago_id": str(pago_id), "accion": data.accion}
 
@@ -545,10 +576,15 @@ async def admin_crear_cancha(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    local_r = await db.execute(select(Local).where(Local.id == data.local_id))
+    local_r = await db.execute(
+        select(Local).where(
+            Local.id == data.local_id,
+            Local.admin_id == uuid.UUID(current_user["id"])
+        )
+    )
     local = local_r.scalar_one_or_none()
     if not local:
-        raise HTTPException(status_code=404, detail="Local no encontrado")
+        raise HTTPException(status_code=404, detail="Local no encontrado o no te pertenece")
     cancha = Cancha(
         local_id=data.local_id, nombre=data.nombre,
         descripcion=data.descripcion, capacidad=data.capacidad,
@@ -571,10 +607,14 @@ async def admin_toggle_cancha(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Cancha).where(Cancha.id == cancha_id))
+    result = await db.execute(
+        select(Cancha)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Cancha.id == cancha_id, Local.admin_id == uuid.UUID(current_user["id"]))
+    )
     cancha = result.scalar_one_or_none()
     if not cancha:
-        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+        raise HTTPException(status_code=404, detail="Cancha no encontrada o no te pertenece")
     cancha.activa = not cancha.activa
     await db.commit()
     return {"mensaje": f"Cancha {cancha.nombre} {'activada' if cancha.activa else 'desactivada'}", "activa": cancha.activa}
@@ -587,10 +627,14 @@ async def admin_actualizar_cancha(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Cancha).where(Cancha.id == cancha_id))
+    result = await db.execute(
+        select(Cancha)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Cancha.id == cancha_id, Local.admin_id == uuid.UUID(current_user["id"]))
+    )
     cancha = result.scalar_one_or_none()
     if not cancha:
-        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+        raise HTTPException(status_code=404, detail="Cancha no encontrada o no te pertenece")
     if data.nombre is not None: cancha.nombre = data.nombre
     if data.descripcion is not None: cancha.descripcion = data.descripcion
     if data.capacidad is not None: cancha.capacidad = data.capacidad
@@ -776,3 +820,110 @@ async def admin_facturacion_stats(
         "ingresos_total": total_ingresos,
         "ingresos_mes": ingresos_mes
     }
+
+
+# ══════════════════════════════════════════════
+# LOCALES — CRUD del admin sobre sus propios locales
+# ══════════════════════════════════════════════
+
+class LocalAdminResponse(BaseModel):
+    id: uuid.UUID
+    nombre: str
+    direccion: str
+    lat: float
+    lng: float
+    telefono: Optional[str] = None
+    descripcion: Optional[str] = None
+    foto_url: Optional[str] = None
+    activo: bool
+    class Config: from_attributes = True
+
+
+class LocalCreateRequest(BaseModel):
+    nombre: str
+    direccion: str
+    lat: float
+    lng: float
+    telefono: Optional[str] = None
+    descripcion: Optional[str] = None
+    foto_url: Optional[str] = None
+
+
+class LocalUpdateRequest(BaseModel):
+    nombre: Optional[str] = None
+    direccion: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    telefono: Optional[str] = None
+    descripcion: Optional[str] = None
+    foto_url: Optional[str] = None
+    activo: Optional[bool] = None
+
+
+@router.get("/locales", response_model=List[LocalAdminResponse])
+async def admin_get_locales(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retorna los locales del admin autenticado."""
+    result = await db.execute(
+        select(Local)
+        .where(Local.admin_id == uuid.UUID(current_user["id"]))
+        .order_by(Local.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/locales", response_model=LocalAdminResponse, status_code=201)
+async def admin_crear_local(
+    data: LocalCreateRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Crea un nuevo local y lo asocia al admin autenticado."""
+    local = Local(
+        admin_id=uuid.UUID(current_user["id"]),
+        nombre=data.nombre,
+        direccion=data.direccion,
+        lat=data.lat,
+        lng=data.lng,
+        telefono=data.telefono,
+        descripcion=data.descripcion,
+        foto_url=data.foto_url,
+    )
+    db.add(local)
+    await db.commit()
+    await db.refresh(local)
+    return local
+
+
+@router.patch("/locales/{local_id}", response_model=LocalAdminResponse)
+async def admin_actualizar_local(
+    local_id: uuid.UUID,
+    data: LocalUpdateRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Actualiza un local del admin autenticado."""
+    result = await db.execute(
+        select(Local).where(
+            Local.id == local_id,
+            Local.admin_id == uuid.UUID(current_user["id"])
+        )
+    )
+    local = result.scalar_one_or_none()
+    if not local:
+        raise HTTPException(status_code=404, detail="Local no encontrado")
+
+    if data.nombre      is not None: local.nombre      = data.nombre
+    if data.direccion   is not None: local.direccion   = data.direccion
+    if data.lat         is not None: local.lat         = data.lat
+    if data.lng         is not None: local.lng         = data.lng
+    if data.telefono    is not None: local.telefono    = data.telefono
+    if data.descripcion is not None: local.descripcion = data.descripcion
+    if data.foto_url    is not None: local.foto_url    = data.foto_url
+    if data.activo      is not None: local.activo      = data.activo
+
+    await db.commit()
+    await db.refresh(local)
+    return local
