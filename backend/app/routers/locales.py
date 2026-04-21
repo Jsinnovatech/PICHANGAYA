@@ -125,14 +125,22 @@ async def get_disponibilidad(
             HorarioDisponible.activo == True
         ).order_by(HorarioDisponible.hora_inicio)
     )
-    horarios = horarios_result.scalars().all()
+    horarios_raw = horarios_result.scalars().all()
+
+    # Reordenar: medianoche (00:xx) va al FINAL, después del 23:00
+    def _sort_hora(h):
+        hora = h.hora_inicio
+        # time(0, x) es medianoche → lo tratamos como hora 24 para que vaya al final
+        return (24 + hora.minute / 60) if hora.hour == 0 else hora.hour + hora.minute / 60
+
+    horarios = sorted(horarios_raw, key=_sort_hora)
 
     if not horarios:
         return []
 
-    # Query 2: reservas activas para esta cancha en esta fecha
+    # Query 2: reservas activas → necesitamos hora_inicio Y hora_fin para range overlap
     reservas_result = await db.execute(
-        select(Reserva.hora_inicio).where(
+        select(Reserva.hora_inicio, Reserva.hora_fin).where(
             Reserva.cancha_id == cancha_id,
             Reserva.fecha == fecha,
             Reserva.estado.in_([
@@ -142,29 +150,38 @@ async def get_disponibilidad(
             ])
         )
     )
-    # Solo traemos hora_inicio — es lo único que necesitamos
-    horas_ocupadas = {str(r)[:5] for r in reservas_result.scalars().all()}
-    # Set de strings "HH:MM" para búsqueda rápida
+    reservas_activas = reservas_result.fetchall()  # lista de (hora_inicio, hora_fin)
 
-    # Query 3: precio base de la cancha (una sola vez fuera del loop)
+    def _t_min(t) -> int:
+        """Convierte time a minutos. Medianoche (00:00) = 1440."""
+        if t.hour == 0 and t.minute == 0:
+            return 1440
+        return t.hour * 60 + t.minute
+
+    def _slot_ocupado(s_ini, s_fin) -> bool:
+        s_start = _t_min(s_ini)
+        s_end   = _t_min(s_fin)
+        for r_ini, r_fin in reservas_activas:
+            if _t_min(r_ini) < s_end and _t_min(r_fin) > s_start:
+                return True
+        return False
+
+    # Query 3: precio base de la cancha
     cancha_result = await db.execute(select(Cancha).where(Cancha.id == cancha_id))
     cancha = cancha_result.scalar_one_or_none()
     precio_base = float(cancha.precio_hora) if cancha else 0.0
-    # Sacamos el precio ANTES del loop para no repetir la query
 
-    # Construir slots — sin queries dentro del loop
+    # Construir slots
     slots = []
     for horario in horarios:
         hora_inicio_str = str(horario.hora_inicio)[:5]
-        hora_fin_str = str(horario.hora_fin)[:5]
-
+        hora_fin_str    = str(horario.hora_fin)[:5]
         precio = float(horario.precio_override) if horario.precio_override else precio_base
-        # precio_override tiene prioridad sobre el precio base
 
         slots.append(SlotDisponibilidad(
             hora_inicio=hora_inicio_str,
             hora_fin=hora_fin_str,
-            disponible=hora_inicio_str not in horas_ocupadas,
+            disponible=not _slot_ocupado(horario.hora_inicio, horario.hora_fin),
             precio=precio
         ))
 

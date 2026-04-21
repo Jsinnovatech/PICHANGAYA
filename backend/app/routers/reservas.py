@@ -52,27 +52,38 @@ async def crear_reserva(
     if not cancha:
         raise HTTPException(status_code=404, detail="Cancha no encontrada o inactiva")
 
-    # ── Paso 2: Verificar slot libre ──────────────────────────
+    # ── Paso 2: Verificar slot libre (range overlap) ─────────
     hora_inicio_time = str_a_time(data.hora_inicio)
     hora_fin_time = str_a_time(data.hora_fin)
 
-    conflicto_result = await db.execute(
+    def _t_min(t) -> int:
+        """Convierte time a minutos. Medianoche (00:00) = 1440 (fin del día)."""
+        if t.hour == 0 and t.minute == 0:
+            return 1440
+        return t.hour * 60 + t.minute
+
+    reservas_existentes = (await db.execute(
         select(Reserva).where(
             Reserva.cancha_id == data.cancha_id,
             Reserva.fecha == data.fecha,
-            Reserva.hora_inicio == hora_inicio_time,
             Reserva.estado.in_([
                 EstadoReservaEnum.pending,
                 EstadoReservaEnum.confirmed,
                 EstadoReservaEnum.active
             ])
         )
-    )
-    if conflicto_result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"El horario {data.hora_inicio} del {data.fecha} ya está reservado"
-        )
+    )).scalars().all()
+
+    new_start = _t_min(hora_inicio_time)
+    new_end   = _t_min(hora_fin_time)
+    for r in reservas_existentes:
+        r_start = _t_min(r.hora_inicio)
+        r_end   = _t_min(r.hora_fin)
+        if r_start < new_end and r_end > new_start:
+            raise HTTPException(
+                status_code=409,
+                detail=f"El horario {data.hora_inicio}–{data.hora_fin} del {data.fecha} ya está reservado"
+            )
 
     # ── Paso 3: Datos del local ───────────────────────────────
     local_result = await db.execute(
@@ -92,7 +103,7 @@ async def crear_reserva(
         fecha=data.fecha,
         hora_inicio=hora_inicio_time,
         hora_fin=hora_fin_time,
-        precio_total=float(cancha.precio_hora),
+        precio_total=round(float(cancha.precio_hora) * (new_end - new_start) / 60, 2),
         estado=EstadoReservaEnum.pending,
         tipo_doc=TipoDocEnum.factura if data.tipo_doc == "factura" else TipoDocEnum.boleta,
         notas=None
@@ -104,7 +115,7 @@ async def crear_reserva(
         id=uuid.uuid4(),
         reserva_id=nueva_reserva.id,
         cliente_id=uuid.UUID(current_user["id"]),
-        monto=float(cancha.precio_hora),
+        monto=nueva_reserva.precio_total,  # total real (horas × precio_hora)
         metodo=MetodoPagoEnum(data.metodo_pago),
         estado=EstadoPagoEnum.pendiente,
         voucher_url=None,

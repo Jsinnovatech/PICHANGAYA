@@ -56,3 +56,5 @@ async def require_admin(
             detail="Acceso solo para administradores"
         )
     return current_user
+
+

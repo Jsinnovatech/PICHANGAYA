@@ -102,6 +102,21 @@ async def admin_dashboard(
     hoy = datetime.now(LIMA_TZ).date()
     primer_dia_mes = hoy.replace(day=1)
 
+    # ── IDs de canchas de este admin (para filtrar stats) ────────
+    admin_uuid = uuid.UUID(current_user["id"])
+    cancha_ids_r = await db.execute(
+        select(Cancha.id)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+
+    # ── IDs de reservas del admin (para cruzar con pagos) ────────
+    reserva_ids_r = await db.execute(
+        select(Reserva.id).where(Reserva.cancha_id.in_(admin_cancha_ids))
+    ) if admin_cancha_ids else None
+    admin_reserva_ids = [row[0] for row in reserva_ids_r.all()] if reserva_ids_r else []
+
     # ── Todos los stats en paralelo (una sola ida a Railway) ─────
     (
         reservas_hoy_r,
@@ -114,26 +129,47 @@ async def admin_dashboard(
         metodo_rows_r,
         ultimas_reservas_r,
     ) = await asyncio.gather(
-        db.execute(select(func.count(Reserva.id)).where(Reserva.fecha == hoy)),
-        db.execute(select(func.count(Reserva.id)).where(Reserva.estado == EstadoReservaEnum.pending)),
+        db.execute(select(func.count(Reserva.id)).where(
+            Reserva.fecha == hoy,
+            Reserva.cancha_id.in_(admin_cancha_ids)
+        )),
+        db.execute(select(func.count(Reserva.id)).where(
+            Reserva.estado == EstadoReservaEnum.pending,
+            Reserva.cancha_id.in_(admin_cancha_ids)
+        )),
         db.execute(select(func.sum(Pago.monto)).where(
             Pago.estado == EstadoPagoEnum.verificado,
+            Pago.reserva_id.in_(admin_reserva_ids),
             func.date(Pago.created_at) == hoy,
         )),
         db.execute(select(func.count(User.id)).where(User.rol == RolEnum.cliente, User.activo == True)),
-        db.execute(select(func.count(Pago.id)).where(Pago.estado == EstadoPagoEnum.pendiente)),
-        db.execute(select(func.count(Reserva.id))),
+        db.execute(select(func.count(Pago.id)).where(
+            Pago.estado == EstadoPagoEnum.pendiente,
+            Pago.reserva_id.in_(admin_reserva_ids),
+        )),
+        db.execute(select(func.count(Reserva.id)).where(
+            Reserva.cancha_id.in_(admin_cancha_ids)
+        )),
         db.execute(select(func.sum(Pago.monto)).where(
             Pago.estado == EstadoPagoEnum.verificado,
+            Pago.reserva_id.in_(admin_reserva_ids),
             func.date(Pago.created_at) >= primer_dia_mes,
             func.date(Pago.created_at) <= hoy,
         )),
         db.execute(
             select(Pago.metodo, func.count(Pago.id), func.sum(Pago.monto))
-            .where(Pago.estado == EstadoPagoEnum.verificado)
+            .where(
+                Pago.estado == EstadoPagoEnum.verificado,
+                Pago.reserva_id.in_(admin_reserva_ids),
+            )
             .group_by(Pago.metodo)
         ),
-        db.execute(select(Reserva).order_by(Reserva.created_at.desc()).limit(20)),
+        db.execute(
+            select(Reserva)
+            .where(Reserva.cancha_id.in_(admin_cancha_ids))
+            .order_by(Reserva.created_at.desc())
+            .limit(20)
+        ),
     )
 
     reservas_hoy      = reservas_hoy_r.scalar() or 0
@@ -171,6 +207,7 @@ async def admin_dashboard(
             Reserva.fecha >= fecha_inicio_rango,
             Reserva.fecha <= fecha_fin_rango,
             Reserva.estado != EstadoReservaEnum.canceled,
+            Reserva.cancha_id.in_(admin_cancha_ids),
         )
     )).scalars().all()
 
@@ -234,7 +271,26 @@ async def admin_get_reservas(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        query = select(Reserva).order_by(Reserva.created_at.desc())
+        admin_uuid = uuid.UUID(current_user["id"])
+
+        # Paso 1: cancha_ids del admin (mismo patrón que el dashboard)
+        cancha_ids_r = await db.execute(
+            select(Cancha.id)
+            .join(Local, Local.id == Cancha.local_id)
+            .where(Local.admin_id == admin_uuid)
+        )
+        admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+        logger.info(f"[admin_get_reservas] admin={admin_uuid} cancha_ids={admin_cancha_ids}")
+
+        if not admin_cancha_ids:
+            return []
+
+        # Paso 2: reservas de esas canchas
+        query = (
+            select(Reserva)
+            .where(Reserva.cancha_id.in_(admin_cancha_ids))
+            .order_by(Reserva.created_at.desc())
+        )
 
         if estado:
             try:
@@ -386,7 +442,21 @@ async def admin_get_pagos(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Pago).order_by(Pago.created_at.desc())
+    # Obtener IDs de reservas del admin
+    admin_uuid = uuid.UUID(current_user["id"])
+    cancha_ids_r = await db.execute(
+        select(Cancha.id)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+
+    reserva_ids_r = await db.execute(
+        select(Reserva.id).where(Reserva.cancha_id.in_(admin_cancha_ids))
+    ) if admin_cancha_ids else None
+    admin_reserva_ids = [row[0] for row in reserva_ids_r.all()] if reserva_ids_r else []
+
+    query = select(Pago).where(Pago.reserva_id.in_(admin_reserva_ids)).order_by(Pago.created_at.desc())
 
     if estado:
         try:
@@ -500,15 +570,39 @@ async def admin_get_clientes(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    # Solo clientes que tienen reservas en los locales de este admin
+    admin_uuid = uuid.UUID(current_user["id"])
+    cancha_ids_r = await db.execute(
+        select(Cancha.id)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+
+    # IDs únicos de clientes con reservas en este local
+    cliente_ids_r = await db.execute(
+        select(Reserva.cliente_id).where(
+            Reserva.cancha_id.in_(admin_cancha_ids)
+        ).distinct()
+    ) if admin_cancha_ids else None
+    cliente_ids = [row[0] for row in cliente_ids_r.all()] if cliente_ids_r else []
+
     result = await db.execute(
-        select(User).where(User.rol == RolEnum.cliente).order_by(User.created_at.desc())
+        select(User).where(
+            User.id.in_(cliente_ids),
+            User.rol == RolEnum.cliente
+        ).order_by(User.created_at.desc())
     )
     clientes = result.scalars().all()
 
     respuesta = []
     for cliente in clientes:
+        # Contar solo reservas en los locales del admin
         reservas_result = await db.execute(
-            select(func.count(Reserva.id)).where(Reserva.cliente_id == cliente.id)
+            select(func.count(Reserva.id)).where(
+                Reserva.cliente_id == cliente.id,
+                Reserva.cancha_id.in_(admin_cancha_ids),
+            )
         )
         total_reservas = reservas_result.scalar() or 0
 
@@ -593,20 +687,24 @@ async def admin_get_canchas(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Cancha).order_by(Cancha.created_at.desc()))
-    canchas = result.scalars().all()
-    respuesta = []
-    for c in canchas:
-        local_r = await db.execute(select(Local).where(Local.id == c.local_id))
-        local = local_r.scalar_one_or_none()
-        respuesta.append(CanchaAdminResponse(
+    # Solo las canchas de los locales que pertenecen a este admin
+    result = await db.execute(
+        select(Cancha, Local.nombre.label("local_nombre"))
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == uuid.UUID(current_user["id"]))
+        .order_by(Cancha.created_at.desc())
+    )
+    filas = result.all()
+    return [
+        CanchaAdminResponse(
             id=c.id, local_id=c.local_id,
-            local_nombre=local.nombre if local else None,
+            local_nombre=local_nombre,
             nombre=c.nombre, descripcion=c.descripcion,
             capacidad=c.capacidad, precio_hora=float(c.precio_hora),
             superficie=c.superficie, activa=c.activa
-        ))
-    return respuesta
+        )
+        for c, local_nombre in filas
+    ]
 
 
 @router.post("/canchas", response_model=CanchaAdminResponse, status_code=201)
@@ -706,11 +804,20 @@ async def admin_timers_hoy(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    admin_uuid = uuid.UUID(current_user["id"])
+    cancha_ids_r = await db.execute(
+        select(Cancha.id)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+
     hoy = datetime.now(timezone.utc).date()
     result = await db.execute(
         select(Reserva).where(
             Reserva.fecha == hoy,
-            Reserva.estado.in_([EstadoReservaEnum.confirmed, EstadoReservaEnum.active])
+            Reserva.estado.in_([EstadoReservaEnum.confirmed, EstadoReservaEnum.active]),
+            Reserva.cancha_id.in_(admin_cancha_ids),
         ).order_by(Reserva.hora_inicio)
     )
     reservas = result.scalars().all()
@@ -794,7 +901,23 @@ async def admin_get_facturacion(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Pago).where(Pago.estado == EstadoPagoEnum.verificado).order_by(Pago.created_at.desc())
+    admin_uuid = uuid.UUID(current_user["id"])
+    cancha_ids_r = await db.execute(
+        select(Cancha.id)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+    reserva_ids_r = await db.execute(
+        select(Reserva.id).where(Reserva.cancha_id.in_(admin_cancha_ids))
+    ) if admin_cancha_ids else None
+    admin_reserva_ids = [row[0] for row in reserva_ids_r.all()] if reserva_ids_r else []
+
+    query = (
+        select(Pago)
+        .where(Pago.estado == EstadoPagoEnum.verificado, Pago.reserva_id.in_(admin_reserva_ids))
+        .order_by(Pago.created_at.desc())
+    )
     result = await db.execute(query)
     pagos = result.scalars().all()
 
@@ -832,7 +955,24 @@ async def admin_facturacion_stats(
     db: AsyncSession = Depends(get_db)
 ):
     from app.models.reserva import TipoDocEnum
-    pagos_verif = (await db.execute(select(Pago).where(Pago.estado == EstadoPagoEnum.verificado))).scalars().all()
+    admin_uuid = uuid.UUID(current_user["id"])
+    cancha_ids_r = await db.execute(
+        select(Cancha.id)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+    reserva_ids_r = await db.execute(
+        select(Reserva.id).where(Reserva.cancha_id.in_(admin_cancha_ids))
+    ) if admin_cancha_ids else None
+    admin_reserva_ids = [row[0] for row in reserva_ids_r.all()] if reserva_ids_r else []
+
+    pagos_verif = (await db.execute(
+        select(Pago).where(
+            Pago.estado == EstadoPagoEnum.verificado,
+            Pago.reserva_id.in_(admin_reserva_ids),
+        )
+    )).scalars().all()
     total_ingresos = sum(float(p.monto) for p in pagos_verif)
 
     boletas = facturas = sin_tipo = 0
@@ -848,6 +988,7 @@ async def admin_facturacion_stats(
     ingresos_mes = float((await db.execute(
         select(func.sum(Pago.monto)).where(
             Pago.estado == EstadoPagoEnum.verificado,
+            Pago.reserva_id.in_(admin_reserva_ids),
             func.date(Pago.created_at) >= primer_dia_mes
         )
     )).scalar() or 0)
