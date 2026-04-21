@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pichangaya/core/constants/api_constants.dart';
@@ -10,6 +11,11 @@ class ApiClient {
 
   final _storage = const FlutterSecureStorage();
   Dio? _dio;
+
+  // Lock para evitar race condition cuando varios requests intentan
+  // refrescar el token al mismo tiempo (ej: FCM + reportes en startup)
+  bool _refreshing = false;
+  final List<Completer<bool>> _refreshQueue = [];
 
   Dio get dio {
     _dio ??= _build();
@@ -36,7 +42,8 @@ class ApiClient {
         if (err.response?.statusCode == 401 &&
             !path.contains('/auth/login') &&
             !path.contains('/auth/refresh')) {
-          if (await _refreshToken()) {
+          final ok = await _refreshTokenSerialized();
+          if (ok) {
             final token = await _storage.read(key: 'access_token');
             err.requestOptions.headers['Authorization'] = 'Bearer $token';
             final resp = await d.fetch(err.requestOptions);
@@ -48,6 +55,29 @@ class ApiClient {
     ));
 
     return d;
+  }
+
+  /// Serializa los refreshes: solo uno corre a la vez.
+  /// Los demás esperan el resultado del primero.
+  Future<bool> _refreshTokenSerialized() async {
+    if (_refreshing) {
+      // Ya hay un refresh en curso — esperar su resultado
+      final completer = Completer<bool>();
+      _refreshQueue.add(completer);
+      return completer.future;
+    }
+
+    _refreshing = true;
+    final result = await _refreshToken();
+    _refreshing = false;
+
+    // Notificar a todos los que estaban esperando
+    for (final c in _refreshQueue) {
+      c.complete(result);
+    }
+    _refreshQueue.clear();
+
+    return result;
   }
 
   Future<bool> _refreshToken() async {
