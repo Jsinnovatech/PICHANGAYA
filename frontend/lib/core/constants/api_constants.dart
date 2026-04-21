@@ -55,6 +55,10 @@ class ApiConstants {
   static const String superAdminToggleAdmin      = '/super-admin/admins';
   static const String superAdminPlanes          = '/super-admin/planes';
   static const String superAdminReportes        = '/super-admin/reportes';
+  static const String superAdminReservas        = '/super-admin/reservas';
+  static const String superAdminAdmins         = '/super-admin/admins';
+  static const String superAdminLocales        = '/super-admin/locales';
+  static const String superAdminCanchas        = '/super-admin/canchas';
 
   // Notificaciones
   static const String notificaciones = '/notificaciones';

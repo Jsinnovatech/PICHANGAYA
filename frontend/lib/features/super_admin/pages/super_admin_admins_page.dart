@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/core/constants/api_constants.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
+import 'package:pichangaya/features/super_admin/pages/super_admin_admin_form_page.dart';
 
 class SuperAdminAdminsPage extends StatefulWidget {
   const SuperAdminAdminsPage({super.key});
@@ -15,6 +17,15 @@ class _State extends State<SuperAdminAdminsPage> {
   bool _loading = true;
   String? _error;
   Timer? _timer;
+  int _page = 0;
+
+  static const double _overhead   = 250.0;
+  static const double _cardHeight = 118.0;
+
+  int _pageSize(BuildContext ctx) {
+    final available = MediaQuery.of(ctx).size.height - _overhead;
+    return (available / _cardHeight).floor().clamp(1, 20);
+  }
 
   @override
   void initState() {
@@ -33,9 +44,12 @@ class _State extends State<SuperAdminAdminsPage> {
     setState(() { _loading = true; _error = null; });
     try {
       final res = await ApiClient().dio.get('/super-admin/admins');
-      setState(() { _admins = res.data; _loading = false; });
+      setState(() { _admins = res.data as List? ?? []; _loading = false; _page = 0; });
+    } on DioException catch (e) {
+      final msg = e.response?.data?['detail']?.toString() ?? e.message ?? 'Sin respuesta';
+      setState(() { _error = 'Error al cargar admins: $msg'; _loading = false; });
     } catch (e) {
-      setState(() { _error = 'Error al cargar admins'; _loading = false; });
+      setState(() { _error = 'Error al cargar admins: $e'; _loading = false; });
     }
   }
 
@@ -98,14 +112,44 @@ class _State extends State<SuperAdminAdminsPage> {
     if (_loading) return const Center(child: CircularProgressIndicator(color: AppColors.amarillo));
     if (_error != null) return Center(child: Text(_error!, style: const TextStyle(color: AppColors.rojo)));
 
-    return RefreshIndicator(
+    final ps    = _pageSize(context);
+    final total = (_admins.length / ps).ceil();
+    final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
+    final items = _admins.skip(page * ps).take(ps).toList();
+
+    return Column(children: [
+      // Botón Nuevo Admin
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: GestureDetector(
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => SuperAdminAdminFormPage(onAdminCreado: _cargar),
+          )),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 11),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.verde),
+              borderRadius: BorderRadius.circular(12),
+              color: AppColors.verde.withOpacity(0.05),
+            ),
+            child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.add, color: AppColors.verde, size: 18),
+              SizedBox(width: 8),
+              Text('Nuevo Admin', style: TextStyle(color: AppColors.verde, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      ),
+      Expanded(child: RefreshIndicator(
       onRefresh: _cargar,
       color: AppColors.amarillo,
-      child: ListView.builder(
+      child: _admins.isEmpty
+          ? const Center(child: Text('No hay admins registrados', style: TextStyle(color: AppColors.texto2)))
+          : ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: _admins.length,
+        itemCount: items.length,
         itemBuilder: (_, i) {
-          final a = _admins[i];
+          final a = items[i];
           final tieneActiva  = a['tiene_suscripcion_activa'] == true;
           final adminActivo  = a['activo'] == true;
           final diasRestantes = a['dias_restantes'];
@@ -217,6 +261,46 @@ class _State extends State<SuperAdminAdminsPage> {
           );
         },
       ),
-    );
+    )),
+      if (total > 1) _paginacion(total, page),
+      const SizedBox(height: 8),
+    ]);
   }
+
+  Widget _paginacion(int total, int current) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      _arrowBtn(Icons.arrow_back_ios_new, current > 0, () => setState(() => _page = current - 1)),
+      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current)),
+      if (total > 9)
+        Text('${current + 1} / $total',
+            style: const TextStyle(color: AppColors.amarillo, fontSize: 14, fontWeight: FontWeight.w700)),
+      _arrowBtn(Icons.arrow_forward_ios, current < total - 1, () => setState(() => _page = current + 1)),
+    ],
+  );
+
+  Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Icon(icon, size: 16, color: enabled ? AppColors.amarillo : AppColors.texto2.withOpacity(0.3)),
+    ),
+  );
+
+  Widget _pageNum(int i, int current) => GestureDetector(
+    onTap: () => setState(() => _page = i),
+    child: Container(
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      width: 28, height: 28,
+      decoration: BoxDecoration(
+        color: i == current ? AppColors.amarillo.withOpacity(0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: i == current ? AppColors.amarillo : AppColors.borde),
+      ),
+      child: Center(child: Text('${i + 1}',
+          style: TextStyle(fontSize: 12,
+              color: i == current ? AppColors.amarillo : AppColors.texto2,
+              fontWeight: i == current ? FontWeight.w700 : FontWeight.w400))),
+    ),
+  );
 }
