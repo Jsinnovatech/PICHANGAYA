@@ -18,7 +18,7 @@ class _MapaTabState extends State<MapaTab> {
   final MapController _mapController = MapController();
   LatLng? _userPos;
   bool _gpsActivo = false;
-  double _radio = 1.0;
+  double _radio = 5.0;
   List<LocalModel> _locales = [];
   bool _loading = true;
   String? _error;
