@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
@@ -15,6 +16,15 @@ class _State extends State<SuperAdminSuscripcionesPage> {
   bool _loading = true;
   String? _error;
   Timer? _timer;
+  int _page = 0;
+
+  static const double _overhead    = 200.0;
+  static const double _cardHeight  = 280.0;
+
+  int _pageSize(BuildContext ctx) {
+    final available = MediaQuery.of(ctx).size.height - _overhead;
+    return (available / _cardHeight).floor().clamp(1, 20);
+  }
 
   @override
   void initState() {
@@ -38,14 +48,15 @@ class _State extends State<SuperAdminSuscripcionesPage> {
       final res =
           await ApiClient().dio.get(ApiConstants.superAdminSuscripciones);
       setState(() {
-        _suscripciones = res.data;
+        _suscripciones = res.data as List? ?? [];
+        _page = 0;
         _loading = false;
       });
+    } on DioException catch (e) {
+      final msg = e.response?.data?['detail']?.toString() ?? e.message ?? 'Sin respuesta';
+      setState(() { _error = 'Error al cargar suscripciones: $msg'; _loading = false; });
     } catch (e) {
-      setState(() {
-        _error = 'Error al cargar suscripciones';
-        _loading = false;
-      });
+      setState(() { _error = 'Error al cargar suscripciones: $e'; _loading = false; });
     }
   }
 
@@ -118,28 +129,35 @@ class _State extends State<SuperAdminSuscripcionesPage> {
       return Center(
           child: Text(_error!, style: const TextStyle(color: AppColors.rojo)));
 
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      color: AppColors.amarillo,
-      child: _suscripciones.isEmpty
-          ? const Center(
-              child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('✅', style: TextStyle(fontSize: 48)),
-                    SizedBox(height: 16),
-                    Text('No hay suscripciones pendientes',
-                        style:
-                            TextStyle(color: AppColors.texto2, fontSize: 16)),
-                  ]),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _suscripciones.length,
-              itemBuilder: (_, i) {
-                final s = _suscripciones[i];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
+    final ps    = _pageSize(context);
+    final total = (_suscripciones.length / ps).ceil();
+    final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
+    final items = _suscripciones.skip(page * ps).take(ps).toList();
+
+    if (_suscripciones.isEmpty) {
+      return const Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text('✅', style: TextStyle(fontSize: 48)),
+          SizedBox(height: 16),
+          Text('No hay suscripciones pendientes',
+              style: TextStyle(color: AppColors.texto2, fontSize: 16)),
+        ]),
+      );
+    }
+
+    return Column(children: [
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _cargar,
+          color: AppColors.amarillo,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: items.length,
+            itemBuilder: (_, i) {
+              final s = items[i];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
                     color: AppColors.negro2,
                     borderRadius: BorderRadius.circular(12),
@@ -282,8 +300,55 @@ class _State extends State<SuperAdminSuscripcionesPage> {
                 );
               },
             ),
-    );
+        ),
+      ),
+      if (total > 1) ...[
+        _paginacion(total, page),
+        const SizedBox(height: 8),
+      ],
+    ]);
   }
+
+  Widget _paginacion(int total, int current) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      _arrowBtn(Icons.arrow_back_ios_new, current > 0,
+          () => setState(() => _page = current - 1)),
+      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current)),
+      if (total > 9)
+        Text('${current + 1} / $total',
+            style: const TextStyle(color: AppColors.amarillo, fontSize: 14, fontWeight: FontWeight.w700)),
+      _arrowBtn(Icons.arrow_forward_ios, current < total - 1,
+          () => setState(() => _page = current + 1)),
+    ]),
+  );
+
+  Widget _pageNum(int i, int current) => GestureDetector(
+    onTap: () => setState(() => _page = i),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: i == current ? AppColors.amarillo.withOpacity(0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: i == current ? AppColors.amarillo : Colors.transparent),
+      ),
+      child: Text('${i + 1}', style: TextStyle(
+        fontSize: 13,
+        fontWeight: i == current ? FontWeight.w700 : FontWeight.normal,
+        color: i == current ? AppColors.amarillo : AppColors.texto2,
+      )),
+    ),
+  );
+
+  Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Icon(icon, size: 16, color: enabled ? AppColors.amarillo : AppColors.borde),
+    ),
+  );
 
   void _verVoucher(String url) {
     showDialog(

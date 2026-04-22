@@ -36,6 +36,8 @@ class Reserva(Base):
     precio_total: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False)
     estado: Mapped[EstadoReservaEnum] = mapped_column(SAEnum(EstadoReservaEnum), default=EstadoReservaEnum.pending)
     tipo_doc: Mapped[TipoDocEnum | None] = mapped_column(SAEnum(TipoDocEnum), nullable=True)
+    ruc_factura: Mapped[str | None] = mapped_column(String(11), nullable=True)
+    razon_social: Mapped[str | None] = mapped_column(String(200), nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     timer_inicio: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     timer_fin: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)

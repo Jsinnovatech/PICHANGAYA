@@ -20,6 +20,12 @@ from pydantic import BaseModel
 class FcmTokenRequest(BaseModel):
     fcm_token: Optional[str] = None
 
+
+class ProfileUpdateRequest(BaseModel):
+    nombre: Optional[str] = None
+    email: Optional[str] = None
+    dni: Optional[str] = None
+
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
@@ -167,6 +173,45 @@ async def me(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return UserResponse(
+        id=str(user.id),
+        celular=user.celular,
+        email=user.email,
+        nombre=user.nombre,
+        dni=user.dni,
+        rol=user.rol.value,
+        activo=user.activo,
+    )
+
+
+@router.patch("/me", response_model=UserResponse)
+async def actualizar_perfil(
+    data: ProfileUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.id == current_user["id"]))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if data.nombre is not None:
+        user.nombre = data.nombre.strip()
+    if data.email is not None:
+        email_clean = data.email.strip().lower()
+        # Verificar que no esté en uso por otro usuario
+        existente = (await db.execute(
+            select(User).where(User.email == email_clean, User.id != user.id)
+        )).scalar_one_or_none()
+        if existente:
+            raise HTTPException(status_code=400, detail="El correo ya está en uso")
+        user.email = email_clean
+    if data.dni is not None:
+        user.dni = data.dni.strip() or None
+
+    await db.commit()
+    await db.refresh(user)
+
     return UserResponse(
         id=str(user.id),
         celular=user.celular,

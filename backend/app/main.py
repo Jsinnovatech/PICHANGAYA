@@ -4,7 +4,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.limiter import limiter
-from app.routers import auth, locales, reservas, pagos, admin, suscripcion, super_admin, notificaciones_router, websocket
+from app.routers import auth, locales, reservas, pagos, admin, suscripcion, super_admin, notificaciones_router, websocket, horarios
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -37,6 +37,7 @@ app.include_router(admin.router,                  prefix=settings.API_V1_PREFIX)
 app.include_router(suscripcion.router,            prefix=settings.API_V1_PREFIX)
 app.include_router(super_admin.router,            prefix=settings.API_V1_PREFIX)
 app.include_router(notificaciones_router.router,  prefix=settings.API_V1_PREFIX)
+app.include_router(horarios.router,               prefix=settings.API_V1_PREFIX)
 app.include_router(websocket.router)
 
 

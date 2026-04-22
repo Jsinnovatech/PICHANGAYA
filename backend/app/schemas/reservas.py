@@ -34,9 +34,11 @@ class ReservaCreateRequest(BaseModel):
     tipo_doc: Optional[str] = "boleta"
     # "boleta" | "factura" — por defecto boleta
 
-    dni_ruc_receptor: Optional[str] = None
-    # Solo necesario si tipo_doc = "factura"
-    # Es el RUC del cliente que pide factura
+    ruc_factura: Optional[str] = None
+    # RUC de la empresa — obligatorio si tipo_doc = "factura" (11 dígitos)
+
+    razon_social: Optional[str] = None
+    # Razón social de la empresa — obligatorio si tipo_doc = "factura"
 
 
 class ReservaResponse(BaseModel):

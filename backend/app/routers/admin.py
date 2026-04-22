@@ -8,7 +8,7 @@ import logging
 
 from app.core.database import get_db
 from app.core.dependencies import require_admin
-from app.models.reserva import Reserva, EstadoReservaEnum
+from app.models.reserva import Reserva, EstadoReservaEnum, TipoDocEnum
 from app.models.pago import Pago, EstadoPagoEnum
 from app.models.user import User, RolEnum
 from app.models.cancha import Cancha
@@ -442,7 +442,8 @@ async def admin_get_pagos(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    # Obtener IDs de reservas del admin
+    import asyncio
+
     admin_uuid = uuid.UUID(current_user["id"])
     cancha_ids_r = await db.execute(
         select(Cancha.id)
@@ -457,7 +458,6 @@ async def admin_get_pagos(
     admin_reserva_ids = [row[0] for row in reserva_ids_r.all()] if reserva_ids_r else []
 
     query = select(Pago).where(Pago.reserva_id.in_(admin_reserva_ids)).order_by(Pago.created_at.desc())
-
     if estado:
         try:
             estado_enum = EstadoPagoEnum(estado)
@@ -468,28 +468,34 @@ async def admin_get_pagos(
     result = await db.execute(query)
     pagos = result.scalars().all()
 
-    respuesta = []
-    for pago in pagos:
-        cliente_result = await db.execute(select(User).where(User.id == pago.cliente_id))
-        cliente = cliente_result.scalar_one_or_none()
+    if not pagos:
+        return []
 
-        reserva_result = await db.execute(select(Reserva).where(Reserva.id == pago.reserva_id))
-        reserva = reserva_result.scalar_one_or_none()
+    # Batch queries — sin N+1
+    cliente_ids  = list({p.cliente_id  for p in pagos})
+    reserva_ids  = list({p.reserva_id  for p in pagos})
+    clientes_r, reservas_r = await asyncio.gather(
+        db.execute(select(User).where(User.id.in_(cliente_ids))),
+        db.execute(select(Reserva).where(Reserva.id.in_(reserva_ids))),
+    )
+    clientes_map = {u.id: u for u in clientes_r.scalars().all()}
+    reservas_map = {r.id: r for r in reservas_r.scalars().all()}
 
-        respuesta.append(PagoAdminResponse(
+    return [
+        PagoAdminResponse(
             id=pago.id,
             reserva_id=pago.reserva_id,
-            reserva_codigo=reserva.codigo if reserva else None,
-            cliente_nombre=cliente.nombre if cliente else None,
-            cliente_celular=cliente.celular if cliente else None,
+            reserva_codigo=reservas_map[pago.reserva_id].codigo if pago.reserva_id in reservas_map else None,
+            cliente_nombre=clientes_map[pago.cliente_id].nombre if pago.cliente_id in clientes_map else None,
+            cliente_celular=clientes_map[pago.cliente_id].celular if pago.cliente_id in clientes_map else None,
             monto=float(pago.monto),
             metodo=pago.metodo.value,
             estado=pago.estado.value,
             voucher_url=pago.voucher_url,
             fecha=str(pago.created_at.date()) if pago.created_at else None
-        ))
-
-    return respuesta
+        )
+        for pago in pagos
+    ]
 
 
 @router.patch("/pagos/{pago_id}/verificar")
@@ -595,36 +601,42 @@ async def admin_get_clientes(
     )
     clientes = result.scalars().all()
 
-    respuesta = []
-    for cliente in clientes:
-        # Contar solo reservas en los locales del admin
-        reservas_result = await db.execute(
-            select(func.count(Reserva.id)).where(
-                Reserva.cliente_id == cliente.id,
+    import asyncio
+
+    # Batch: count reservas y sum pagos por cliente — sin N+1
+    reservas_count_r, pagos_sum_r = await asyncio.gather(
+        db.execute(
+            select(Reserva.cliente_id, func.count(Reserva.id))
+            .where(
+                Reserva.cliente_id.in_(cliente_ids),
                 Reserva.cancha_id.in_(admin_cancha_ids),
             )
-        )
-        total_reservas = reservas_result.scalar() or 0
-
-        pagos_result = await db.execute(
-            select(func.sum(Pago.monto)).where(
-                Pago.cliente_id == cliente.id,
-                Pago.estado == EstadoPagoEnum.verificado
+            .group_by(Reserva.cliente_id)
+        ),
+        db.execute(
+            select(Pago.cliente_id, func.sum(Pago.monto))
+            .where(
+                Pago.cliente_id.in_(cliente_ids),
+                Pago.estado == EstadoPagoEnum.verificado,
             )
-        )
-        total_gastado = float(pagos_result.scalar() or 0)
+            .group_by(Pago.cliente_id)
+        ),
+    )
+    reservas_count_map = {row[0]: row[1] for row in reservas_count_r.all()}
+    pagos_sum_map      = {row[0]: float(row[1] or 0) for row in pagos_sum_r.all()}
 
-        respuesta.append(ClienteAdminResponse(
+    return [
+        ClienteAdminResponse(
             id=cliente.id,
             nombre=cliente.nombre,
             celular=cliente.celular,
             dni=cliente.dni,
             activo=cliente.activo,
-            total_reservas=total_reservas,
-            total_gastado=total_gastado
-        ))
-
-    return respuesta
+            total_reservas=reservas_count_map.get(cliente.id, 0),
+            total_gastado=pagos_sum_map.get(cliente.id, 0.0),
+        )
+        for cliente in clientes
+    ]
 
 
 @router.patch("/clientes/{cliente_id}/toggle")
@@ -821,22 +833,36 @@ async def admin_timers_hoy(
         ).order_by(Reserva.hora_inicio)
     )
     reservas = result.scalars().all()
-    respuesta = []
-    for r in reservas:
-        cliente = (await db.execute(select(User).where(User.id == r.cliente_id))).scalar_one_or_none()
-        cancha = (await db.execute(select(Cancha).where(Cancha.id == r.cancha_id))).scalar_one_or_none()
-        respuesta.append(TimerReservaResponse(
+
+    if not reservas:
+        return []
+
+    import asyncio
+
+    # Batch queries — sin N+1
+    cliente_ids = list({r.cliente_id for r in reservas})
+    cancha_ids  = list({r.cancha_id  for r in reservas})
+    clientes_r, canchas_r = await asyncio.gather(
+        db.execute(select(User).where(User.id.in_(cliente_ids))),
+        db.execute(select(Cancha).where(Cancha.id.in_(cancha_ids))),
+    )
+    clientes_map = {u.id: u for u in clientes_r.scalars().all()}
+    canchas_map  = {c.id: c for c in canchas_r.scalars().all()}
+
+    return [
+        TimerReservaResponse(
             id=r.id, codigo=r.codigo,
-            cliente_nombre=cliente.nombre if cliente else "—",
-            cliente_celular=cliente.celular if cliente else "",
-            cancha_nombre=cancha.nombre if cancha else None,
+            cliente_nombre=clientes_map[r.cliente_id].nombre if r.cliente_id in clientes_map else "—",
+            cliente_celular=clientes_map[r.cliente_id].celular if r.cliente_id in clientes_map else "",
+            cancha_nombre=canchas_map[r.cancha_id].nombre if r.cancha_id in canchas_map else None,
             fecha=r.fecha,
             hora_inicio=str(r.hora_inicio)[:5],
             hora_fin=str(r.hora_fin)[:5],
             estado=r.estado.value,
             precio_total=float(r.precio_total)
-        ))
-    return respuesta
+        )
+        for r in reservas
+    ]
 
 
 @router.patch("/timers/{reserva_id}/iniciar")
@@ -887,6 +913,8 @@ class FacturacionItemResponse(BaseModel):
     monto: float
     metodo_pago: str
     tipo_doc: Optional[str] = None
+    ruc_factura: Optional[str] = None
+    razon_social: Optional[str] = None
     comprobante_estado: Optional[str] = None
     comprobante_serie: Optional[str] = None
     comprobante_numero: Optional[int] = None
@@ -921,16 +949,41 @@ async def admin_get_facturacion(
     result = await db.execute(query)
     pagos = result.scalars().all()
 
+    if not pagos:
+        return []
+
+    import asyncio
+
+    # Batch queries — sin N+1
+    reserva_ids = list({p.reserva_id for p in pagos})
+    cliente_ids = list({p.cliente_id for p in pagos})
+
+    reservas_r, clientes_r, comprobantes_r = await asyncio.gather(
+        db.execute(select(Reserva).where(Reserva.id.in_(reserva_ids))),
+        db.execute(select(User).where(User.id.in_(cliente_ids))),
+        db.execute(select(Comprobante).where(Comprobante.reserva_id.in_(reserva_ids))),
+    )
+    reservas_map     = {r.id: r for r in reservas_r.scalars().all()}
+    clientes_map     = {u.id: u for u in clientes_r.scalars().all()}
+    comprobantes_map = {c.reserva_id: c for c in comprobantes_r.scalars().all()}
+
+    cancha_ids = list({r.cancha_id for r in reservas_map.values()})
+    canchas_map = {
+        c.id: c for c in (await db.execute(
+            select(Cancha).where(Cancha.id.in_(cancha_ids))
+        )).scalars().all()
+    } if cancha_ids else {}
+
     respuesta = []
     for pago in pagos:
-        reserva = (await db.execute(select(Reserva).where(Reserva.id == pago.reserva_id))).scalar_one_or_none()
+        reserva = reservas_map.get(pago.reserva_id)
         if not reserva:
             continue
         if tipo_doc and (reserva.tipo_doc is None or reserva.tipo_doc.value != tipo_doc):
             continue
-        cliente = (await db.execute(select(User).where(User.id == pago.cliente_id))).scalar_one_or_none()
-        cancha = (await db.execute(select(Cancha).where(Cancha.id == reserva.cancha_id))).scalar_one_or_none()
-        comp = (await db.execute(select(Comprobante).where(Comprobante.reserva_id == reserva.id))).scalar_one_or_none()
+        cliente = clientes_map.get(pago.cliente_id)
+        cancha  = canchas_map.get(reserva.cancha_id)
+        comp    = comprobantes_map.get(reserva.id)
 
         respuesta.append(FacturacionItemResponse(
             reserva_id=reserva.id, codigo=reserva.codigo,
@@ -940,6 +993,8 @@ async def admin_get_facturacion(
             fecha=reserva.fecha, monto=float(pago.monto),
             metodo_pago=pago.metodo.value,
             tipo_doc=reserva.tipo_doc.value if reserva.tipo_doc else None,
+            ruc_factura=reserva.ruc_factura,
+            razon_social=reserva.razon_social,
             comprobante_estado=comp.estado.value if comp else None,
             comprobante_serie=comp.serie if comp else None,
             comprobante_numero=comp.numero if comp else None,
@@ -954,7 +1009,6 @@ async def admin_facturacion_stats(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    from app.models.reserva import TipoDocEnum
     admin_uuid = uuid.UUID(current_user["id"])
     cancha_ids_r = await db.execute(
         select(Cancha.id)
@@ -967,21 +1021,29 @@ async def admin_facturacion_stats(
     ) if admin_cancha_ids else None
     admin_reserva_ids = [row[0] for row in reserva_ids_r.all()] if reserva_ids_r else []
 
-    pagos_verif = (await db.execute(
-        select(Pago).where(
-            Pago.estado == EstadoPagoEnum.verificado,
-            Pago.reserva_id.in_(admin_reserva_ids),
-        )
-    )).scalars().all()
-    total_ingresos = sum(float(p.monto) for p in pagos_verif)
+    import asyncio
+
+    pagos_verif_r, reservas_tipo_r = await asyncio.gather(
+        db.execute(
+            select(Pago.monto).where(
+                Pago.estado == EstadoPagoEnum.verificado,
+                Pago.reserva_id.in_(admin_reserva_ids),
+            )
+        ),
+        db.execute(
+            select(Reserva.tipo_doc).where(
+                Reserva.id.in_(admin_reserva_ids),
+                Reserva.estado != EstadoReservaEnum.canceled,
+            )
+        ),
+    )
+    total_ingresos = sum(float(m) for m in pagos_verif_r.scalars().all())
 
     boletas = facturas = sin_tipo = 0
-    for p in pagos_verif:
-        r = (await db.execute(select(Reserva).where(Reserva.id == p.reserva_id))).scalar_one_or_none()
-        if r:
-            if r.tipo_doc and r.tipo_doc.value == "boleta": boletas += 1
-            elif r.tipo_doc and r.tipo_doc.value == "factura": facturas += 1
-            else: sin_tipo += 1
+    for tipo_doc_val in reservas_tipo_r.scalars().all():
+        if tipo_doc_val == TipoDocEnum.boleta:   boletas  += 1
+        elif tipo_doc_val == TipoDocEnum.factura: facturas += 1
+        else:                                     sin_tipo += 1
 
     hoy = datetime.now(timezone.utc).date()
     primer_dia_mes = hoy.replace(day=1)

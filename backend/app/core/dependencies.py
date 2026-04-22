@@ -58,3 +58,14 @@ async def require_admin(
     return current_user
 
 
+async def require_super_admin(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    if current_user.get("rol") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el super admin puede acceder a este recurso"
+        )
+    return current_user
+
+

@@ -14,32 +14,20 @@ class _MisReservasTabState extends State<MisReservasTab> {
   List<ReservaModel> _reservas = [];
   bool _loading = true;
   String? _error;
-  final PageController _pageController = PageController();
-  int _paginaActual = 0;
+  int _page = 0;
 
-  // Cuántas reservas por página
-  static const int _porPagina = 3;
+  static const double _overhead    = 240.0; // appbar + bottomnav + header + paginacion
+  static const double _cardHeight  = 155.0; // card con/sin botón cancelar
+
+  int _pageSize(BuildContext ctx) {
+    final available = MediaQuery.of(ctx).size.height - _overhead;
+    return (available / _cardHeight).floor().clamp(1, 20);
+  }
 
   @override
   void initState() {
     super.initState();
     _cargar();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  // Total de páginas según las reservas
-  int get _totalPaginas => (_reservas.length / _porPagina).ceil();
-
-  // Reservas de una página específica
-  List<ReservaModel> _reservasDePagina(int pagina) {
-    final inicio = pagina * _porPagina;
-    final fin = (inicio + _porPagina).clamp(0, _reservas.length);
-    return _reservas.sublist(inicio, fin);
   }
 
   Future<void> _cargar() async {
@@ -52,7 +40,7 @@ class _MisReservasTabState extends State<MisReservasTab> {
       setState(() {
         _reservas =
             (res.data as List).map((j) => ReservaModel.fromJson(j)).toList();
-        _paginaActual = 0;
+        _page = 0;
         _loading = false;
       });
     } catch (e) {
@@ -114,6 +102,22 @@ class _MisReservasTabState extends State<MisReservasTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.verde));
+    }
+    if (_error != null) {
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(_error!, style: const TextStyle(color: AppColors.rojo)),
+        const SizedBox(height: 12),
+        ElevatedButton(onPressed: _cargar, child: const Text('Reintentar')),
+      ]));
+    }
+
+    final ps    = _pageSize(context);
+    final total = (_reservas.length / ps).ceil();
+    final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
+    final items = _reservas.skip(page * ps).take(ps).toList();
+
     return Column(children: [
       // ── Header ─────────────────────────────────────────────
       Container(
@@ -124,191 +128,96 @@ class _MisReservasTabState extends State<MisReservasTab> {
         ),
         child: Row(children: [
           const Text('📋 MIS RESERVAS',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 0.5)),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                  color: Colors.white, letterSpacing: 0.5)),
           const Spacer(),
-          if (_reservas.isNotEmpty) ...[
-            // Muestra página actual / total páginas
-            Text('Pág ${_paginaActual + 1} / $_totalPaginas',
-                style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
-            const SizedBox(width: 4),
+          if (_reservas.isNotEmpty)
             Text('(${_reservas.length} reservas)',
                 style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
-          ],
           const SizedBox(width: 12),
           GestureDetector(
               onTap: _cargar,
-              child:
-                  const Icon(Icons.refresh, color: AppColors.texto2, size: 20)),
+              child: const Icon(Icons.refresh, color: AppColors.texto2, size: 20)),
         ]),
       ),
 
       // ── Contenido ──────────────────────────────────────────
-      Expanded(
-        child: _loading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppColors.verde))
-            : _error != null
-                ? Center(
-                    child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                        Text(_error!,
-                            style: const TextStyle(color: AppColors.rojo)),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                            onPressed: _cargar,
-                            child: const Text('Reintentar')),
-                      ]))
-                : _reservas.isEmpty
-                    ? const Center(
-                        child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                            Text('📋', style: TextStyle(fontSize: 48)),
-                            SizedBox(height: 12),
-                            Text('No tienes reservas aún',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700)),
-                            SizedBox(height: 4),
-                            Text('Ve al mapa y reserva una cancha',
-                                style: TextStyle(
-                                    color: AppColors.texto2, fontSize: 12)),
-                          ]))
-                    : Column(children: [
-                        // ── PageView — cada página tiene 3 reservas ──
-                        Expanded(
-                          child: PageView.builder(
-                            controller: _pageController,
-                            itemCount: _totalPaginas,
-                            onPageChanged: (i) => setState(() {
-                              _paginaActual = i;
-                            }),
-                            itemBuilder: (_, pagina) {
-                              final reservasDePagina =
-                                  _reservasDePagina(pagina);
-                              return _buildPagina(reservasDePagina);
-                            },
-                          ),
-                        ),
-
-                        // ── Indicadores + navegación ──────────────
-                        if (_totalPaginas > 1) _buildIndicadores(),
-                      ]),
-      ),
+      if (_reservas.isEmpty)
+        const Expanded(child: Center(
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text('📋', style: TextStyle(fontSize: 48)),
+            SizedBox(height: 12),
+            Text('No tienes reservas aún',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+            SizedBox(height: 4),
+            Text('Ve al mapa y reserva una cancha',
+                style: TextStyle(color: AppColors.texto2, fontSize: 12)),
+          ]),
+        ))
+      else ...[
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _cargar,
+            color: AppColors.verde,
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              itemCount: items.length,
+              itemBuilder: (_, i) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _cardReserva(items[i]),
+              ),
+            ),
+          ),
+        ),
+        if (total > 1) ...[
+          _paginacion(total, page),
+          const SizedBox(height: 8),
+        ],
+      ],
     ]);
   }
 
-  // Una página con hasta 3 reservas apiladas
-  Widget _buildPagina(List<ReservaModel> reservas) {
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      color: AppColors.verde,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          children: reservas
-              .map((r) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _cardReserva(r),
-                  ))
-              .toList(),
-        ),
+  Widget _paginacion(int total, int current) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      _arrowBtn(Icons.arrow_back_ios_new, current > 0,
+          () => setState(() => _page = current - 1)),
+      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current)),
+      if (total > 9)
+        Text('${current + 1} / $total',
+            style: const TextStyle(color: AppColors.verde, fontSize: 14, fontWeight: FontWeight.w700)),
+      _arrowBtn(Icons.arrow_forward_ios, current < total - 1,
+          () => setState(() => _page = current + 1)),
+    ]),
+  );
+
+  Widget _pageNum(int i, int current) => GestureDetector(
+    onTap: () => setState(() => _page = i),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: i == current ? AppColors.verde.withOpacity(0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: i == current ? AppColors.verde : Colors.transparent),
       ),
-    );
-  }
+      child: Text('${i + 1}', style: TextStyle(
+        fontSize: 13,
+        fontWeight: i == current ? FontWeight.w700 : FontWeight.normal,
+        color: i == current ? AppColors.verde : AppColors.texto2,
+      )),
+    ),
+  );
 
-  // Indicadores de página + flechas
-  Widget _buildIndicadores() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
-      child: Row(children: [
-        // Flecha anterior
-        GestureDetector(
-          onTap: () {
-            if (_paginaActual > 0) {
-              _pageController.previousPage(
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeInOut);
-            }
-          },
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-                color: _paginaActual > 0 ? AppColors.negro2 : AppColors.negro3,
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color:
-                        _paginaActual > 0 ? AppColors.verde : AppColors.borde)),
-            child: Icon(Icons.arrow_back_ios_new,
-                color: _paginaActual > 0 ? AppColors.verde : AppColors.texto2,
-                size: 14),
-          ),
-        ),
-
-        // Puntos indicadores de página
-        Expanded(
-            child: Center(
-                child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(
-              _totalPaginas,
-              (i) => GestureDetector(
-                    onTap: () => _pageController.animateToPage(i,
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeInOut),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      width: i == _paginaActual ? 24 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                          color: i == _paginaActual
-                              ? AppColors.verde
-                              : AppColors.borde,
-                          borderRadius: BorderRadius.circular(4)),
-                    ),
-                  )),
-        ))),
-
-        // Flecha siguiente
-        GestureDetector(
-          onTap: () {
-            if (_paginaActual < _totalPaginas - 1) {
-              _pageController.nextPage(
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeInOut);
-            }
-          },
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-                color: _paginaActual < _totalPaginas - 1
-                    ? AppColors.negro2
-                    : AppColors.negro3,
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: _paginaActual < _totalPaginas - 1
-                        ? AppColors.verde
-                        : AppColors.borde)),
-            child: Icon(Icons.arrow_forward_ios,
-                color: _paginaActual < _totalPaginas - 1
-                    ? AppColors.verde
-                    : AppColors.texto2,
-                size: 14),
-          ),
-        ),
-      ]),
-    );
-  }
+  Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Icon(icon, size: 16, color: enabled ? AppColors.verde : AppColors.borde),
+    ),
+  );
 
   // ── CARD DE RESERVA ───────────────────────────────────────────
   Widget _cardReserva(ReservaModel r) {

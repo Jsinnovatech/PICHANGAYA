@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 import uuid
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_super_admin
 from app.core.security import hash_password
 from app.models.suscripcion import Suscripcion, EstadoSuscripcionEnum
 from app.models.user import User, RolEnum
@@ -29,17 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/super-admin", tags=["Super Admin"])
 
 
-# ══════════════════════════════════════════════
-# DEPENDENCY — solo super_admin puede acceder
-# ══════════════════════════════════════════════
-
-async def require_super_admin(current_user: dict = Depends(get_current_user)):
-    if current_user["rol"] != "super_admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Solo el super admin puede acceder a este recurso"
-        )
-    return current_user
+# require_super_admin viene de app.core.dependencies
 
 
 # ══════════════════════════════════════════════

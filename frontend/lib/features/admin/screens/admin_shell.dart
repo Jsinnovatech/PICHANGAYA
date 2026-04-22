@@ -12,6 +12,8 @@ import 'package:pichangaya/features/admin/pages/admin_clientes_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_timers_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_facturacion_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_canchas_page.dart';
+import 'package:pichangaya/features/admin/pages/admin_locales_page.dart';
+import 'package:pichangaya/features/admin/pages/admin_horarios_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_suscripcion_page.dart';
 
 class AdminShell extends StatefulWidget {
@@ -35,6 +37,8 @@ class _State extends State<AdminShell> {
     {'icon': '⏱️', 'label': 'Timers'},
     {'icon': '🧾', 'label': 'Facturación'},
     {'icon': '🏟️', 'label': 'Canchas'},
+    {'icon': '📍', 'label': 'Locales'},
+    {'icon': '🗓️', 'label': 'Horarios'},
     {'icon': '💎', 'label': 'Suscripción'},
   ];
 
@@ -47,6 +51,8 @@ class _State extends State<AdminShell> {
     const AdminTimersPage(),
     const AdminFacturacionPage(),
     const AdminCanchasPage(),
+    const AdminLocalesPage(),
+    const AdminHorariosPage(),
     const AdminSuscripcionPage(),
   ];
 
@@ -54,6 +60,8 @@ class _State extends State<AdminShell> {
   void initState() {
     super.initState();
     _cargarNombreAdmin();
+    // Registrar FCM token ahora que el JWT ya está disponible
+    FcmService.instance.syncToken();
   }
 
   Future<void> _cargarNombreAdmin() async {
@@ -195,6 +203,8 @@ class _State extends State<AdminShell> {
       '⏱️ Timers',
       '🧾 Facturación',
       '🏟️ Canchas',
+      '📍 Locales',
+      '🗓️ Horarios',
       '💎 Suscripción',
     ];
     return Container(

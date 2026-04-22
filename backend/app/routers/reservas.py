@@ -14,6 +14,7 @@ from app.models.pago import Pago, MetodoPagoEnum, EstadoPagoEnum
 from app.models.cancha import Cancha
 from app.models.local import Local
 from app.models.user import User
+from app.models.comprobante import Comprobante
 from app.schemas.reservas import ReservaCreateRequest, ReservaResponse, MiReservaResponse
 from app.notificaciones import notif_reserva_nueva, notif_reserva_cancelada_por_cliente
 
@@ -94,6 +95,16 @@ async def crear_reserva(
     # ── Paso 4: Código de reserva ─────────────────────────────
     codigo = generar_codigo_reserva()
 
+    # ── Paso 4b: Validar datos de factura ────────────────────
+    es_factura = data.tipo_doc == "factura"
+    if es_factura:
+        ruc = (data.ruc_factura or "").strip()
+        rs  = (data.razon_social or "").strip()
+        if len(ruc) != 11 or not ruc.isdigit():
+            raise HTTPException(status_code=400, detail="RUC inválido: debe tener 11 dígitos")
+        if not rs:
+            raise HTTPException(status_code=400, detail="La razón social es obligatoria para facturas")
+
     # ── Paso 5: Crear reserva ─────────────────────────────────
     nueva_reserva = Reserva(
         id=uuid.uuid4(),
@@ -105,7 +116,9 @@ async def crear_reserva(
         hora_fin=hora_fin_time,
         precio_total=round(float(cancha.precio_hora) * (new_end - new_start) / 60, 2),
         estado=EstadoReservaEnum.pending,
-        tipo_doc=TipoDocEnum.factura if data.tipo_doc == "factura" else TipoDocEnum.boleta,
+        tipo_doc=TipoDocEnum.factura if es_factura else TipoDocEnum.boleta,
+        ruc_factura=data.ruc_factura.strip() if es_factura and data.ruc_factura else None,
+        razon_social=data.razon_social.strip() if es_factura and data.razon_social else None,
         notas=None
     )
     db.add(nueva_reserva)
@@ -195,6 +208,8 @@ async def mis_reservas(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    import asyncio
+
     result = await db.execute(
         select(Reserva)
         .where(Reserva.cliente_id == uuid.UUID(current_user["id"]))
@@ -202,19 +217,41 @@ async def mis_reservas(
     )
     reservas = result.scalars().all()
 
+    if not reservas:
+        return []
+
+    # Batch queries en paralelo — sin N+1
+    reserva_ids = [r.id for r in reservas]
+    cancha_ids  = list({r.cancha_id for r in reservas})
+
+    canchas_rows, pagos_rows, comprobantes_rows = await asyncio.gather(
+        db.execute(select(Cancha).where(Cancha.id.in_(cancha_ids))),
+        db.execute(select(Pago).where(Pago.reserva_id.in_(reserva_ids))),
+        db.execute(select(Comprobante).where(Comprobante.reserva_id.in_(reserva_ids))),
+    )
+    canchas_map      = {c.id: c for c in canchas_rows.scalars().all()}
+    pagos_map        = {p.reserva_id: p for p in pagos_rows.scalars().all()}
+    comprobantes_map = {c.reserva_id: c for c in comprobantes_rows.scalars().all()}
+
+    # Batch de locales a partir de las canchas encontradas
+    local_ids   = list({c.local_id for c in canchas_map.values()})
+    locales_map = {
+        l.id: l for l in (await db.execute(
+            select(Local).where(Local.id.in_(local_ids))
+        )).scalars().all()
+    } if local_ids else {}
+
     respuesta = []
     for reserva in reservas:
-        cancha_result = await db.execute(
-            select(Cancha).where(Cancha.id == reserva.cancha_id)
-        )
-        cancha = cancha_result.scalar_one_or_none()
+        cancha       = canchas_map.get(reserva.cancha_id)
+        local        = locales_map.get(cancha.local_id) if cancha else None
+        pago         = pagos_map.get(reserva.id)
+        comprobante  = comprobantes_map.get(reserva.id)
 
-        local = None
-        if cancha:
-            local_result = await db.execute(
-                select(Local).where(Local.id == cancha.local_id)
-            )
-            local = local_result.scalar_one_or_none()
+        # serie_fact: "B001-00001" (serie-numero del comprobante emitido)
+        serie_fact = None
+        if comprobante and comprobante.serie and comprobante.numero:
+            serie_fact = f"{comprobante.serie}-{str(comprobante.numero).zfill(5)}"
 
         respuesta.append(MiReservaResponse(
             id=reserva.id,
@@ -227,8 +264,8 @@ async def mis_reservas(
             precio_total=float(reserva.precio_total),
             estado=reserva.estado.value,
             tipo_doc=reserva.tipo_doc.value if reserva.tipo_doc else None,
-            metodo_pago=None,
-            serie_fact=None
+            metodo_pago=pago.metodo.value if pago else None,
+            serie_fact=serie_fact
         ))
 
     return respuesta

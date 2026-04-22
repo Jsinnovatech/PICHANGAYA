@@ -19,12 +19,16 @@ class ClientShell extends StatefulWidget {
 class _State extends State<ClientShell> {
   int _tabIndex = 0;
   LocalModel? _localSeleccionado;
-  String _nombreCliente = '';
+  String _nombreCliente  = '';
+  String _celularCliente = '';
+  String _dniCliente     = '';
 
   @override
   void initState() {
     super.initState();
     _cargarNombre();
+    // Registrar FCM token ahora que el JWT ya está disponible
+    FcmService.instance.syncToken();
   }
 
   Future<void> _cargarNombre() async {
@@ -32,9 +36,12 @@ class _State extends State<ClientShell> {
       final res = await ApiClient().dio.get('/auth/me');
       if (mounted) {
         setState(() {
-          // Tomar solo el primer nombre
-          final nombre = res.data['nombre'] ?? '';
-          _nombreCliente = nombre.split(' ').first;
+          final nombre   = (res.data['nombre']  ?? '').toString();
+          final celular  = (res.data['celular'] ?? '').toString();
+          final dni      = (res.data['dni']     ?? '').toString();
+          _nombreCliente  = nombre.split(' ').first;
+          _celularCliente = celular;
+          _dniCliente     = dni;
         });
       }
     } catch (_) {}
@@ -55,7 +62,12 @@ class _State extends State<ClientShell> {
   Widget build(BuildContext context) {
     final tabWidgets = [
       MapaTab(onLocalSeleccionado: _onLocalSeleccionado),
-      CanchasTab(localFiltro: _localSeleccionado),
+      CanchasTab(
+        localFiltro:     _localSeleccionado,
+        nombreCliente:   _nombreCliente,
+        celularCliente:  _celularCliente,
+        dniCliente:      _dniCliente,
+      ),
       const PagarTab(),
       const MisReservasTab(),
     ];
@@ -249,6 +261,16 @@ class _State extends State<ClientShell> {
               },
             ),
             const SizedBox(height: 8),
+            // Editar perfil
+            _menuItem(
+              icon: Icons.edit_outlined,
+              label: 'Editar Perfil',
+              onTap: () {
+                Navigator.pop(context);
+                _abrirEditarPerfil(context);
+              },
+            ),
+            const SizedBox(height: 8),
             // Cerrar sesión
             _menuItem(
               icon: Icons.logout,
@@ -264,6 +286,28 @@ class _State extends State<ClientShell> {
             const SizedBox(height: 8),
           ]),
         ),
+      ),
+    );
+  }
+
+  void _abrirEditarPerfil(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.negro2,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _EditarPerfilSheet(
+        nombreInicial:  _nombreCliente,
+        celular:        _celularCliente,
+        dniInicial:     _dniCliente,
+        onGuardado: (nombre, dni) {
+          setState(() {
+            _nombreCliente = nombre.split(' ').first;
+            _dniCliente    = dni;
+          });
+        },
       ),
     );
   }
@@ -298,4 +342,179 @@ class _State extends State<ClientShell> {
           ]),
         ),
       );
+}
+
+// ── Formulario edición de perfil ─────────────────────────────────────────────
+
+class _EditarPerfilSheet extends StatefulWidget {
+  final String nombreInicial;
+  final String celular;
+  final String dniInicial;
+  final void Function(String nombre, String dni) onGuardado;
+
+  const _EditarPerfilSheet({
+    required this.nombreInicial,
+    required this.celular,
+    required this.dniInicial,
+    required this.onGuardado,
+  });
+
+  @override
+  State<_EditarPerfilSheet> createState() => _EditarPerfilSheetState();
+}
+
+class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nombre;
+  late final TextEditingController _email;
+  late final TextEditingController _dni;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nombre = TextEditingController(text: widget.nombreInicial);
+    _email  = TextEditingController();
+    _dni    = TextEditingController(text: widget.dniInicial);
+    // Cargar email actual desde /auth/me
+    ApiClient().dio.get('/auth/me').then((res) {
+      if (mounted) _email.text = res.data['email'] ?? '';
+    }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _nombre.dispose(); _email.dispose(); _dni.dispose();
+    super.dispose();
+  }
+
+  Future<void> _guardar() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _guardando = true);
+
+    final data = <String, dynamic>{};
+    if (_nombre.text.trim().isNotEmpty) data['nombre'] = _nombre.text.trim();
+    if (_email.text.trim().isNotEmpty)  data['email']  = _email.text.trim();
+    data['dni'] = _dni.text.trim();
+
+    try {
+      await ApiClient().dio.patch('/auth/me', data: data);
+      widget.onGuardado(_nombre.text.trim(), _dni.text.trim());
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✅ Perfil actualizado'),
+          backgroundColor: Color(0xFF1B5E20),
+        ));
+      }
+    } catch (e) {
+      setState(() => _guardando = false);
+      if (mounted) {
+        String msg = 'Error al guardar';
+        if (e.toString().contains('400')) msg = 'El correo ya está en uso';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          backgroundColor: AppColors.rojo,
+        ));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20, right: 20, top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Text('✏️ Editar Perfil',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Icon(Icons.close, color: AppColors.texto2, size: 22),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            // Celular (solo lectura)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.negro,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.borde),
+              ),
+              child: Row(children: [
+                const Icon(Icons.phone, color: AppColors.texto2, size: 16),
+                const SizedBox(width: 8),
+                Text(widget.celular,
+                    style: const TextStyle(color: AppColors.texto2, fontSize: 14)),
+                const SizedBox(width: 8),
+                const Text('(no editable)',
+                    style: TextStyle(color: AppColors.borde, fontSize: 11)),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            _campo(_nombre, 'Nombre completo *', required: true),
+            const SizedBox(height: 12),
+            _campo(_email, 'Correo electrónico', tipo: TextInputType.emailAddress),
+            const SizedBox(height: 12),
+            _campo(_dni, 'DNI', tipo: TextInputType.number),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _guardando ? null : _guardar,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.verde,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: _guardando
+                    ? const SizedBox(height: 18, width: 18,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Guardar cambios',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _campo(TextEditingController ctrl, String label, {
+    bool required = false,
+    TextInputType tipo = TextInputType.text,
+  }) =>
+    TextFormField(
+      controller: ctrl,
+      keyboardType: tipo,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: AppColors.texto2, fontSize: 13),
+        filled: true,
+        fillColor: AppColors.negro,
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppColors.borde)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppColors.borde)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppColors.verde, width: 1.5)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      ),
+      validator: required
+          ? (v) => (v == null || v.trim().isEmpty) ? 'Campo requerido' : null
+          : null,
+    );
 }

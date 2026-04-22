@@ -41,6 +41,9 @@ class ApiConstants {
   static const String adminClientes = '/admin/clientes';
   static const String adminDashboard = '/admin/dashboard';
   static const String adminVerificarPago = '/admin/pagos/{id}/verificar';
+  static const String adminLocales  = '/admin/locales';
+  static const String adminCanchas  = '/admin/canchas';
+  static const String adminHorarios = '/admin/horarios';
 
   // Suscripcion
   static const String miSuscripcion = '/suscripcion/mi-suscripcion';
