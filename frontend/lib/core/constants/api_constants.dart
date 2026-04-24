@@ -2,20 +2,14 @@ import 'package:flutter/foundation.dart';
 
 class ApiConstants {
   // Detecta automaticamente si es web (Chrome) o Android emulator
+  static const String _railwayUrl = 'https://pichangaya-production-0eb7.up.railway.app';
+
   static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:8000/api/v1';
-    } else {
-      return 'http://10.0.2.2:8000/api/v1';
-    }
+    return '$_railwayUrl/api/v1';
   }
 
   static String get wsTimers {
-    if (kIsWeb) {
-      return 'ws://localhost:8000/ws/timers';
-    } else {
-      return 'ws://10.0.2.2:8000/ws/timers';
-    }
+    return 'wss://pichangaya-production-0eb7.up.railway.app/ws/timers';
   }
 
   // Auth
