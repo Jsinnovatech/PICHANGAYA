@@ -15,6 +15,16 @@ class _State extends State<AdminClientesPage> {
   bool _loading = true;
   String? _error;
   final _searchCtrl = TextEditingController();
+  int _page = 0;
+
+  // Overhead: appbar(56) + tabbar(48) + stats(72) + buscador(62) + toppad(12) + pagination(50) + margins(16)
+  static const double _overhead   = 316.0;
+  static const double _cardHeight = 76.0;
+
+  int _pageSize(BuildContext ctx) {
+    final available = MediaQuery.of(ctx).size.height - _overhead;
+    return (available / _cardHeight).floor().clamp(1, 30);
+  }
 
   @override
   void initState() {
@@ -51,6 +61,7 @@ class _State extends State<AdminClientesPage> {
   void _filtrar(String query) {
     final q = query.toLowerCase().trim();
     setState(() {
+      _page = 0;
       _filtrados = q.isEmpty
           ? _clientes
           : _clientes
@@ -183,18 +194,77 @@ class _State extends State<AdminClientesPage> {
                                 style:
                                     const TextStyle(color: AppColors.texto2)),
                           ]))
-                    : RefreshIndicator(
-                        onRefresh: _cargar,
-                        color: AppColors.verde,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: _filtrados.length,
-                          itemBuilder: (_, i) => _cardCliente(_filtrados[i]),
-                        ),
-                      ),
+                    : _buildLista(context),
       ),
     ]);
   }
+
+  Widget _buildLista(BuildContext context) {
+    final ps    = _pageSize(context);
+    final total = (_filtrados.length / ps).ceil();
+    final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
+    final items = _filtrados.skip(page * ps).take(ps).toList();
+
+    return Column(children: [
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _cargar,
+          color: AppColors.verde,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            itemCount: items.length,
+            itemBuilder: (_, i) => _cardCliente(items[i]),
+          ),
+        ),
+      ),
+      if (total > 1) ...[
+        _paginacion(total, page),
+        const SizedBox(height: 8),
+      ],
+    ]);
+  }
+
+  Widget _paginacion(int total, int current) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      _arrowBtn(Icons.arrow_back_ios_new, current > 0,
+          () => setState(() => _page = current - 1)),
+      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current)),
+      if (total > 9) Text('${current + 1} / $total',
+          style: const TextStyle(color: AppColors.verde, fontSize: 14,
+              fontWeight: FontWeight.w700)),
+      _arrowBtn(Icons.arrow_forward_ios, current < total - 1,
+          () => setState(() => _page = current + 1)),
+    ]),
+  );
+
+  Widget _pageNum(int i, int current) => GestureDetector(
+    onTap: () => setState(() => _page = i),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: i == current ? AppColors.verde.withOpacity(0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: i == current ? AppColors.verde : Colors.transparent),
+      ),
+      child: Text('${i + 1}', style: TextStyle(
+        fontSize: 13,
+        fontWeight: i == current ? FontWeight.w700 : FontWeight.normal,
+        color: i == current ? AppColors.verde : AppColors.texto2,
+      )),
+    ),
+  );
+
+  Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Icon(icon, size: 16, color: enabled ? AppColors.verde : AppColors.borde),
+    ),
+  );
 
   Widget _cardCliente(Map<String, dynamic> c) {
     final activo = c['activo'] == true;

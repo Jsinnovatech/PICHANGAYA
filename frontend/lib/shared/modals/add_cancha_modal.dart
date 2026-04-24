@@ -56,7 +56,7 @@ class _State extends State<AddCanchaModal> {
 
   Future<void> _cargarLocales() async {
     try {
-      final res = await ApiClient().dio.get('/locales');
+      final res = await ApiClient().dio.get('/admin/locales');
       setState(() { _locales = res.data; _loadingLocales = false; });
     } catch (_) {
       setState(() => _loadingLocales = false);

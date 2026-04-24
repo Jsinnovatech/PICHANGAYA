@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/core/constants/api_constants.dart';
@@ -52,7 +53,10 @@ class _State extends State<SuperAdminHistorialPagosPage> {
       );
       setState(() { _todos = res.data; _loading = false; });
     } catch (e) {
-      setState(() { _error = 'Error al cargar historial'; _loading = false; });
+      final msg = e is DioException
+          ? (e.response?.data?['detail']?.toString() ?? e.message ?? 'Sin respuesta')
+          : e.toString();
+      setState(() { _error = 'Error al cargar historial: $msg'; _loading = false; });
     }
   }
 

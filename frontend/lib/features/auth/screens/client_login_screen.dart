@@ -38,10 +38,10 @@ class _State extends State<ClientLoginScreen> {
           access: res.data['access_token'], refresh: res.data['refresh_token']);
       await ApiClient().saveRol(res.data['rol']);
       await ApiClient().saveUser(jsonEncode({
-        'nombre': res.data['nombre'] ?? '',
-        'email': res.data['email'] ?? '',
+        'nombre':  res.data['nombre']  ?? '',
+        'email':   res.data['email']   ?? '',
         'celular': res.data['celular'] ?? '',
-        'dni': '',
+        'dni':     res.data['dni']     ?? '',
       }));
       if (!mounted) return;
       context.go('/home');

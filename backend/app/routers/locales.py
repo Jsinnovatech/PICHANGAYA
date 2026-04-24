@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from math import radians, cos, sin, asin, sqrt
 from typing import Optional, List
-from datetime import date
+from datetime import date, time
 import uuid
 
 from app.core.database import get_db
@@ -171,18 +171,32 @@ async def get_disponibilidad(
     cancha = cancha_result.scalar_one_or_none()
     precio_base = float(cancha.precio_hora) if cancha else 0.0
 
-    # Construir slots
+    # Construir slots — genera sub-slots de 1 hora por cada HorarioDisponible.
+    # El admin define un rango (ej. 08:00–22:00); el cliente ve 14 slots de 1h.
     slots = []
     for horario in horarios:
-        hora_inicio_str = str(horario.hora_inicio)[:5]
-        hora_fin_str    = str(horario.hora_fin)[:5]
         precio = float(horario.precio_override) if horario.precio_override else precio_base
 
-        slots.append(SlotDisponibilidad(
-            hora_inicio=hora_inicio_str,
-            hora_fin=hora_fin_str,
-            disponible=not _slot_ocupado(horario.hora_inicio, horario.hora_fin),
-            precio=precio
-        ))
+        # Convertir hora_inicio/hora_fin a minutos desde medianoche
+        ini_min = horario.hora_inicio.hour * 60 + horario.hora_inicio.minute
+        fin_h, fin_m = horario.hora_fin.hour, horario.hora_fin.minute
+        # 00:00 como hora_fin significa medianoche = fin del día = 1440 min
+        fin_min = 1440 if (fin_h == 0 and fin_m == 0) else fin_h * 60 + fin_m
+
+        # Generar slots de 1 hora
+        current = ini_min
+        while current + 60 <= fin_min:
+            next_min = current + 60
+            slot_ini = time(current // 60, current % 60)
+            # Si next_min == 1440 usamos time(0, 0) para representar medianoche
+            slot_fin = time(0, 0) if next_min == 1440 else time(next_min // 60, next_min % 60)
+
+            slots.append(SlotDisponibilidad(
+                hora_inicio=f"{current // 60:02d}:{current % 60:02d}",
+                hora_fin=f"{next_min % 1440 // 60:02d}:{next_min % 1440 % 60:02d}",
+                disponible=not _slot_ocupado(slot_ini, slot_fin),
+                precio=precio
+            ))
+            current += 60
 
     return slots

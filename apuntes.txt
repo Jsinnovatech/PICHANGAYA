@@ -39,28 +39,47 @@ flutter run
 
 
 
+claude --resume 293a38d8-0d91-4a95-8bbe-4e5669460d66
 
- quiero que me indiques paso a paso detalladamente de como hacer los pasos en firebase para la
-  obtencion de los archivos (google-services.json y firebase-service-account.json), sabuendo que no teno ni un proyecto
- llamado pichangaya en firebase
 
-claude --resume 973b1141-dcd3-463f-9cfc-6c3ac8eb8d7c
+para levantar en ngrok
+
+ngrok http 3000 --host-header="localhost:3000"
+ngrok http 127.0.0.1:3000 --host-header="localhost:3000"
 
 
 
 
 MEJORAS PARA EL ARTEFACTO EN HTML PICHANGAYA.
 
-ya cumpa antes de quiero que tengas en cuenta algo que el login tendra 3 roles el super admin, admin y cliente,
- al loguearte con el super admin tendremos un dashoboard de cantidad de campos deportivos registrados, clientes, 
-pagos de suscripcion y fecha de pago de pago suscriptor fecha de venciomiento si en caso no pago de le restringue 
-el uso del app, total de recauddado por mes estadisticas, y demas cosas relacionadas al app, asi mismo al ingresar 
-al rol de admin hay que agregar un tab al lado derecho asi como salen los demas tab donde sea suscripcion y al ingresar
-le de dos opciones con  facturacion electrónica el costo sera de 50 mensual y con entrega de boleta simple  els costo
-sera de 30, al hacer clip el admin podra hacer su pago de suscripcion en la cual podra ser por yape, plin o pago por 
-trasnfereancia y podra subir su captura del pago, este llegara al super admin verificado el pago este activara al admin 
-para el uso de la app, me ha comprendido cumpa vamos a hacer estas mejoras.
-si cumpa un ultimo pedido hay que mandarle una notificacion que saldra en el app cuando el admin se suscribe y le avisa 
-al super admin para que verifique y acepte asi mismo cuando ya se  haya aceptado, rechazado al admin para que sepa, igual
- la misma logica cuando el cliente reserva le ebe llegar al admin una notificacion y cuando acepta la reserva tb le debe 
-llegar una notificacion de que su reserva ya esta hecha.
+ya cumpa quiero que en el rol de cliente agrgues un tab de productos que al ingesar muestre categorias como bebidas,
+cervezas, snaks, y que al abrir en uno de ellos muestres todos los productos en cada producto la catidad de stock,   
+precio del producto y boton de agrgar la cantidad  y  al hacer clip se sume a un carrito de compras donde se vea la
+cantidad de prodcutos el total a pagar y al hace clip en pagar le aparezca las opciones de pago yape, plin, efectivo 
+y que al admin le avise que el cliente le hizo un pedido y le lleve a su mesa. 
+
+////PARA ACTIVAR EN WEB EL PUSH NOTIFICACION EN FIREBASE 
+npm install firebase
+
+
+ // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBIBDKwugvWYH9s7A2KYZdq7lboyxNAK_k",
+  authDomain: "pichangaya-6d300.firebaseapp.com",
+  projectId: "pichangaya-6d300",
+  storageBucket: "pichangaya-6d300.firebasestorage.app",
+  messagingSenderId: "83990636031",
+  appId: "1:83990636031:web:da3dec3a2653e9de1473ca"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+ ///// EL VAPID KEY PARA EL PUSH WEB DE NOTIFICACIONES EN FIREBASE
+
+BO-zL00Gw34QLvk5Zh45wQYdjqLFpusN0l2Z3mUX_to-wIUvhGYW6rY9kgEzWy3sdTKKz5zs8T8dR5gd8GxPrWI

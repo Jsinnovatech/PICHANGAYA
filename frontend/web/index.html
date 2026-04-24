@@ -34,5 +34,19 @@
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
+
+  <!-- Registrar el Service Worker de FCM -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/firebase-messaging-sw.js')
+        .then(function(reg) {
+          console.log('[PichangaYa] SW registrado:', reg.scope);
+        })
+        .catch(function(err) {
+          console.warn('[PichangaYa] SW error:', err);
+        });
+    }
+  </script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
@@ -43,8 +44,11 @@ class _State extends State<SuperAdminDashboardPage> {
         _loading = false;
       });
     } catch (e) {
+      final msg = e is DioException
+          ? (e.response?.data?['detail']?.toString() ?? e.message ?? 'Sin respuesta')
+          : e.toString();
       setState(() {
-        _error = 'Error al cargar dashboard';
+        _error = 'Error al cargar dashboard: $msg';
         _loading = false;
       });
     }

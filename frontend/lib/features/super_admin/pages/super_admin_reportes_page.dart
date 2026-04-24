@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
@@ -43,7 +44,10 @@ class _State extends State<SuperAdminReportesPage> {
       );
       setState(() { _data = res.data; _loading = false; });
     } catch (e) {
-      setState(() { _error = 'Error al cargar reportes'; _loading = false; });
+      final msg = e is DioException
+          ? (e.response?.data?['detail']?.toString() ?? e.message ?? 'Sin respuesta')
+          : e.toString();
+      setState(() { _error = 'Error al cargar reportes: $msg'; _loading = false; });
     }
   }
 

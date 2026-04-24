@@ -18,6 +18,10 @@ class FcmService {
   FcmService._();
   static final FcmService instance = FcmService._();
 
+  // ⚠️ Reemplaza con tu VAPID key de Firebase Console →
+  // Project Settings → Cloud Messaging → Web configuration → Key pair
+  static const String _vapidKey = 'BO-zL00Gw34QLvk5Zh45wQYdjqLFpusN0l2Z3mUX_to-wIUvhGYW6rY9kgEzWy3sdTKKz5zs8T8dR5gd8GxPrWI';
+
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotif =
       FlutterLocalNotificationsPlugin();
@@ -31,33 +35,38 @@ class FcmService {
   );
 
   Future<void> init() async {
-    if (kIsWeb) return;
-
-    // 1. Crear canal Android
-    await _localNotif
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
-
-    // 2. Inicializar plugin local
-    const initSettings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    );
-    await _localNotif.initialize(initSettings);
-
-    // 3. Pedir permiso al usuario
+    // 1. Pedir permiso (funciona en Android, iOS y Web)
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
-
     if (settings.authorizationStatus == AuthorizationStatus.denied) return;
+
+    if (kIsWeb) {
+      // Web: solo escuchar mensajes en foreground (background lo maneja el SW)
+      FirebaseMessaging.onMessage.listen(_mostrarNotifWeb);
+      await _syncToken();
+      _messaging.onTokenRefresh.listen(_enviarTokenAlBackend);
+      return;
+    }
+
+    // 2. Crear canal Android
+    await _localNotif
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_channel);
+
+    // 3. Inicializar plugin local
+    const initSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+    await _localNotif.initialize(initSettings);
 
     // 4. Registrar handler de background
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // 5. Mostrar notificación cuando la app está en FOREGROUND
+    // 5. Mostrar notificación cuando la app está en FOREGROUND (Android)
     FirebaseMessaging.onMessage.listen((message) {
       final notification = message.notification;
       final android = message.notification?.android;
@@ -88,9 +97,27 @@ class FcmService {
     _messaging.onTokenRefresh.listen(_enviarTokenAlBackend);
   }
 
+  void _mostrarNotifWeb(RemoteMessage message) {
+    // En web foreground el navegador no muestra notificaciones automáticamente.
+    // El Service Worker las muestra en background.
+    // Aquí solo logueamos — puedes mostrar un SnackBar si quieres.
+    final n = message.notification;
+    if (n != null) {
+      // ignore: avoid_print
+      print('[FCM Web] ${n.title}: ${n.body}');
+    }
+  }
+
   Future<void> _syncToken() async {
-    final token = await _messaging.getToken();
+    final token = await _messaging.getToken(
+      vapidKey: kIsWeb ? _vapidKey : null,
+    );
     if (token != null) await _enviarTokenAlBackend(token);
+  }
+
+  /// Llama después del login para registrar el token FCM en el backend.
+  Future<void> syncToken() async {
+    await _syncToken();
   }
 
   Future<void> _enviarTokenAlBackend(String token) async {
@@ -106,7 +133,6 @@ class FcmService {
 
   /// Llamar en logout para limpiar el token del backend
   Future<void> limpiarToken() async {
-    if (kIsWeb) return;
     try {
       await ApiClient().dio.patch(
         '/auth/fcm-token',
