@@ -20,11 +20,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS — solo orígenes permitidos del .env
 allowed_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+use_wildcard = "*" in allowed_origins
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if use_wildcard else allowed_origins,
+    allow_credentials=False if use_wildcard else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
