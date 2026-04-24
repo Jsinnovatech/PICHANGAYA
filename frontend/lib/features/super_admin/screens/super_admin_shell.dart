@@ -76,39 +76,45 @@ class _State extends State<SuperAdminShell> {
     if (isWide) {
       return Scaffold(
         backgroundColor: AppColors.negro,
-        body: Row(children: [
-          _buildSidebar(),
-          Expanded(child: Column(children: [
-            _buildTopBar(),
-            Expanded(child: _pages[_pageIndex]),
-          ])),
-        ]),
+        body: SafeArea(
+          bottom: false,
+          child: Row(children: [
+            _buildSidebar(),
+            Expanded(child: Column(children: [
+              _buildTopBar(),
+              Expanded(child: _pages[_pageIndex]),
+            ])),
+          ]),
+        ),
       );
     }
 
     // Mobile: overlay drawer
     return Scaffold(
       backgroundColor: AppColors.negro,
-      body: Stack(children: [
-        Column(children: [
-          _buildTopBar(),
-          Expanded(child: _pages[_pageIndex]),
-        ]),
-        if (_sidebarOpen) ...[
-          GestureDetector(
-            onTap: () => setState(() => _sidebarOpen = false),
-            child: Container(
-              color: Colors.black54,
-              width: double.infinity,
-              height: double.infinity,
+      body: SafeArea(
+        bottom: false,
+        child: Stack(children: [
+          Column(children: [
+            _buildTopBar(),
+            Expanded(child: _pages[_pageIndex]),
+          ]),
+          if (_sidebarOpen) ...[
+            GestureDetector(
+              onTap: () => setState(() => _sidebarOpen = false),
+              child: Container(
+                color: Colors.black54,
+                width: double.infinity,
+                height: double.infinity,
+              ),
             ),
-          ),
-          Positioned(
-            left: 0, top: 0, bottom: 0,
-            child: _buildSidebar(),
-          ),
-        ],
-      ]),
+            Positioned(
+              left: 0, top: 0, bottom: 0,
+              child: _buildSidebar(),
+            ),
+          ],
+        ]),
+      ),
     );
   }
 

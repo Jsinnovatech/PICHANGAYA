@@ -997,8 +997,21 @@ class _ModalReservarCanchaState extends State<_ModalReservarCancha> {
         );
       }
     } catch (e) {
+      String msg = 'Error al crear reserva. Intente de nuevo.';
+      if (e is DioException) {
+        final data = e.response?.data;
+        if (data is Map && data['detail'] != null) {
+          msg = data['detail'].toString();
+        } else if (e.response?.statusCode == 409) {
+          msg = 'El horario seleccionado ya está reservado.';
+        } else if (e.response?.statusCode == 401) {
+          msg = 'Sesión expirada. Vuelve a iniciar sesión.';
+        } else if (e.response?.statusCode == 400) {
+          msg = data is Map ? (data['detail'] ?? 'Datos inválidos').toString() : 'Datos inválidos';
+        }
+      }
       setState(() {
-        _error = 'Error al crear reserva. El horario puede estar ocupado.';
+        _error = msg;
         _loading = false;
       });
     }
