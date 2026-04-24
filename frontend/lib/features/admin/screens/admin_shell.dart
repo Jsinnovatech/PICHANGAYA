@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
 import 'package:pichangaya/features/admin/pages/admin_dashboard_page.dart';
-import 'package:pichangaya/features/admin/pages/admin_ultimas_reservas_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_reservas_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_pagos_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_clientes_page.dart';
@@ -13,7 +12,7 @@ import 'package:pichangaya/features/admin/pages/admin_timers_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_facturacion_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_canchas_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_locales_page.dart';
-import 'package:pichangaya/features/admin/pages/admin_horarios_page.dart';
+import 'package:pichangaya/features/admin/pages/admin_reserva_manual_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_suscripcion_page.dart';
 
 class AdminShell extends StatefulWidget {
@@ -30,29 +29,27 @@ class _State extends State<AdminShell> {
 
   static const _navItems = [
     {'icon': '📊', 'label': 'Dashboard'},
-    {'icon': '🕐', 'label': 'Últimas Reservas'},
     {'icon': '📋', 'label': 'Reservas'},
+    {'icon': '🖊️', 'label': 'Reserva Manual'},
     {'icon': '💳', 'label': 'Pagos'},
     {'icon': '👥', 'label': 'Clientes'},
     {'icon': '⏱️', 'label': 'Timers'},
     {'icon': '🧾', 'label': 'Facturación'},
     {'icon': '🏟️', 'label': 'Canchas'},
     {'icon': '📍', 'label': 'Locales'},
-    {'icon': '🗓️', 'label': 'Horarios'},
     {'icon': '💎', 'label': 'Suscripción'},
   ];
 
   List<Widget> get _pages => [
     AdminDashboardPage(key: ValueKey(_dashboardKey)),
-    const AdminUltimasReservasPage(),
     const AdminReservasPage(),
+    const AdminReservaManualPage(),
     const AdminPagosPage(),
     const AdminClientesPage(),
     const AdminTimersPage(),
     const AdminFacturacionPage(),
     const AdminCanchasPage(),
     const AdminLocalesPage(),
-    const AdminHorariosPage(),
     const AdminSuscripcionPage(),
   ];
 
@@ -202,15 +199,14 @@ class _State extends State<AdminShell> {
   Widget _buildTopBar() {
     final titles = [
       '📊 Dashboard',
-      '🕐 Últimas Reservas',
       '📋 Reservas',
+      '🖊️ Reserva Manual',
       '💳 Pagos',
       '👥 Clientes',
       '⏱️ Timers',
       '🧾 Facturación',
       '🏟️ Canchas',
       '📍 Locales',
-      '🗓️ Horarios',
       '💎 Suscripción',
     ];
     return Container(

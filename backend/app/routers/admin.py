@@ -1,18 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import List, Optional
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, time, timedelta
 import uuid
 import logging
+import json
+import secrets
 
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.models.reserva import Reserva, EstadoReservaEnum, TipoDocEnum
-from app.models.pago import Pago, EstadoPagoEnum
+from app.models.pago import Pago, EstadoPagoEnum, MetodoPagoEnum
 from app.models.user import User, RolEnum
 from app.models.cancha import Cancha
 from app.models.local import Local
+from app.models.horario import HorarioDisponible
 from app.models.comprobante import Comprobante, EstadoComprobanteEnum
 from app.notificaciones import notif_reserva_confirmada, notif_reserva_rechazada
 from pydantic import BaseModel
@@ -83,6 +86,34 @@ class VerificarPagoRequest(BaseModel):
 class CambiarEstadoReservaRequest(BaseModel):
     estado: str
     notas: Optional[str] = None
+
+
+class ReservaManualRequest(BaseModel):
+    cancha_id: uuid.UUID
+    fecha: date
+    hora_inicio: str   # "HH:MM"
+    hora_fin: str      # "HH:MM"
+    nombre_cliente: str
+    dni_cliente: str
+    metodo_pago: str   # yape | plin | efectivo
+    tipo_doc: str      # boleta | factura
+    ruc_factura: Optional[str] = None
+    razon_social: Optional[str] = None
+
+
+class SlotAdminResponse(BaseModel):
+    hora_inicio: str
+    hora_fin: str
+    disponible: bool
+    precio: float
+
+
+class CanchaDisponibilidadResponse(BaseModel):
+    cancha_id: uuid.UUID
+    cancha_nombre: str
+    tipo_piso: Optional[str] = None
+    precio_hora: float
+    slots: List[SlotAdminResponse]
 
 
 # ══════════════════════════════════════════════
@@ -740,6 +771,22 @@ async def admin_crear_cancha(
         precio_hora=data.precio_hora, superficie=data.superficie
     )
     db.add(cancha)
+    await db.flush()  # obtener el ID de la cancha antes del commit
+
+    # Auto-crear horarios por defecto: lunes a domingo, 08:00 – 22:00
+    from datetime import time as time_type
+    for dia in range(7):  # 0=Lunes ... 6=Domingo
+        horario = HorarioDisponible(
+            id=uuid.uuid4(),
+            cancha_id=cancha.id,
+            dia_semana=dia,
+            hora_inicio=time_type(7, 0),
+            hora_fin=time_type(0, 0),
+            precio_override=None,
+            activo=True
+        )
+        db.add(horario)
+
     await db.commit()
     await db.refresh(cancha)
     return CanchaAdminResponse(
@@ -1169,3 +1216,210 @@ async def admin_actualizar_local(
     await db.commit()
     await db.refresh(local)
     return local
+
+
+# ══════════════════════════════════════════════
+# RESERVA MANUAL
+# ══════════════════════════════════════════════
+
+@router.get("/disponibilidad-canchas", response_model=List[CanchaDisponibilidadResponse])
+async def get_disponibilidad_canchas(
+    fecha: date = Query(...),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Devuelve todas las canchas del local del admin con sus slots del día."""
+    admin_uuid = uuid.UUID(current_user["id"])
+    dia_semana = fecha.weekday()
+
+    # Canchas activas del local del admin
+    canchas_r = await db.execute(
+        select(Cancha)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid, Cancha.activa == True)
+        .order_by(Cancha.nombre)
+    )
+    canchas = canchas_r.scalars().all()
+
+    def _t_min(t) -> int:
+        if t.hour == 0 and t.minute == 0:
+            return 1440
+        return t.hour * 60 + t.minute
+
+    resultado = []
+    for cancha in canchas:
+        # Horarios del día para esta cancha
+        horarios_r = await db.execute(
+            select(HorarioDisponible).where(
+                HorarioDisponible.cancha_id == cancha.id,
+                HorarioDisponible.dia_semana == dia_semana,
+                HorarioDisponible.activo == True
+            ).order_by(HorarioDisponible.hora_inicio)
+        )
+        horarios = horarios_r.scalars().all()
+        if not horarios:
+            continue
+
+        # Reservas activas del día
+        reservas_r = await db.execute(
+            select(Reserva.hora_inicio, Reserva.hora_fin).where(
+                Reserva.cancha_id == cancha.id,
+                Reserva.fecha == fecha,
+                Reserva.estado.in_([
+                    EstadoReservaEnum.pending,
+                    EstadoReservaEnum.confirmed,
+                    EstadoReservaEnum.active
+                ])
+            )
+        )
+        reservas_activas = reservas_r.fetchall()
+
+        def _ocupado(s_ini, s_fin) -> bool:
+            s0, s1 = _t_min(s_ini), _t_min(s_fin)
+            for r_ini, r_fin in reservas_activas:
+                if _t_min(r_ini) < s1 and _t_min(r_fin) > s0:
+                    return True
+            return False
+
+        precio_base = float(cancha.precio_hora)
+        slots = []
+        for horario in horarios:
+            precio = float(horario.precio_override) if horario.precio_override else precio_base
+            ini_min = horario.hora_inicio.hour * 60 + horario.hora_inicio.minute
+            fin_h, fin_m = horario.hora_fin.hour, horario.hora_fin.minute
+            fin_min = 1440 if (fin_h == 0 and fin_m == 0) else fin_h * 60 + fin_m
+
+            current = ini_min
+            while current + 60 <= fin_min:
+                next_min = current + 60
+                slot_ini = time(current // 60, current % 60)
+                slot_fin = time(0, 0) if next_min == 1440 else time(next_min // 60, next_min % 60)
+                slots.append(SlotAdminResponse(
+                    hora_inicio=f"{current // 60:02d}:{current % 60:02d}",
+                    hora_fin=f"{next_min % 1440 // 60:02d}:{next_min % 1440 % 60:02d}",
+                    disponible=not _ocupado(slot_ini, slot_fin),
+                    precio=precio
+                ))
+                current += 60
+
+        resultado.append(CanchaDisponibilidadResponse(
+            cancha_id=cancha.id,
+            cancha_nombre=cancha.nombre,
+            tipo_piso=cancha.tipo_piso if hasattr(cancha, 'tipo_piso') else None,
+            precio_hora=precio_base,
+            slots=slots
+        ))
+
+    return resultado
+
+
+@router.post("/reservas/manual", status_code=201)
+async def crear_reserva_manual(
+    data: ReservaManualRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin crea una reserva presencial en nombre de un cliente walk-in."""
+    admin_uuid = uuid.UUID(current_user["id"])
+
+    # Verificar que la cancha pertenece al local del admin
+    cancha_r = await db.execute(
+        select(Cancha)
+        .join(Local, Local.id == Cancha.local_id)
+        .where(Cancha.id == data.cancha_id, Local.admin_id == admin_uuid, Cancha.activa == True)
+    )
+    cancha = cancha_r.scalar_one_or_none()
+    if not cancha:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada o no pertenece a tu local")
+
+    # Validar datos de factura
+    es_factura = data.tipo_doc == "factura"
+    if es_factura:
+        ruc = (data.ruc_factura or "").strip()
+        rs  = (data.razon_social or "").strip()
+        if len(ruc) != 11 or not ruc.isdigit():
+            raise HTTPException(status_code=400, detail="RUC inválido: debe tener 11 dígitos")
+        if not rs:
+            raise HTTPException(status_code=400, detail="Razón social obligatoria para factura")
+
+    # Parsear horas
+    def _parse_time(s: str) -> time:
+        try:
+            h, m = s.split(":")
+            return time(int(h), int(m))
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Hora inválida: {s}")
+
+    hora_inicio_t = _parse_time(data.hora_inicio)
+    hora_fin_t    = _parse_time(data.hora_fin)
+
+    def _t_min(t) -> int:
+        if t.hour == 0 and t.minute == 0:
+            return 1440
+        return t.hour * 60 + t.minute
+
+    new_start = _t_min(hora_inicio_t)
+    new_end   = _t_min(hora_fin_t)
+
+    # Verificar slot libre
+    reservas_r = await db.execute(
+        select(Reserva).where(
+            Reserva.cancha_id == data.cancha_id,
+            Reserva.fecha == data.fecha,
+            Reserva.estado.in_([EstadoReservaEnum.pending, EstadoReservaEnum.confirmed, EstadoReservaEnum.active])
+        )
+    )
+    for r in reservas_r.scalars().all():
+        if _t_min(r.hora_inicio) < new_end and _t_min(r.hora_fin) > new_start:
+            raise HTTPException(status_code=409, detail=f"El horario {data.hora_inicio}–{data.hora_fin} ya está reservado")
+
+    precio_total = round(float(cancha.precio_hora) * (new_end - new_start) / 60, 2)
+
+    # Guardar datos del cliente walk-in en notas (JSON)
+    notas_data = json.dumps({
+        "manual": True,
+        "nombre_cliente": data.nombre_cliente.strip(),
+        "dni_cliente": data.dni_cliente.strip()
+    }, ensure_ascii=False)
+
+    nueva_reserva = Reserva(
+        id=uuid.uuid4(),
+        codigo=f"MAN-{secrets.token_hex(3).upper()}",
+        cliente_id=admin_uuid,   # admin como titular
+        cancha_id=data.cancha_id,
+        fecha=data.fecha,
+        hora_inicio=hora_inicio_t,
+        hora_fin=hora_fin_t,
+        precio_total=precio_total,
+        estado=EstadoReservaEnum.confirmed,   # confirmada de inmediato
+        tipo_doc=TipoDocEnum.factura if es_factura else TipoDocEnum.boleta,
+        ruc_factura=data.ruc_factura.strip() if es_factura and data.ruc_factura else None,
+        razon_social=data.razon_social.strip() if es_factura and data.razon_social else None,
+        notas=notas_data
+    )
+    db.add(nueva_reserva)
+
+    LIMA_TZ = timezone(timedelta(hours=-5))
+    nuevo_pago = Pago(
+        id=uuid.uuid4(),
+        reserva_id=nueva_reserva.id,
+        cliente_id=admin_uuid,
+        monto=precio_total,
+        metodo=MetodoPagoEnum(data.metodo_pago),
+        estado=EstadoPagoEnum.verificado,     # pagado en el momento
+        voucher_url=None,
+        comprobante_ext=None,
+        verificado_por=admin_uuid,
+        verificado_at=datetime.now(LIMA_TZ)
+    )
+    db.add(nuevo_pago)
+
+    await db.commit()
+    await db.refresh(nueva_reserva)
+
+    return {
+        "reserva_id": str(nueva_reserva.id),
+        "codigo": nueva_reserva.codigo,
+        "precio_total": precio_total,
+        "mensaje": "Reserva manual creada exitosamente"
+    }

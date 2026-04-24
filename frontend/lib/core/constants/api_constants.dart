@@ -5,11 +5,15 @@ class ApiConstants {
   static const String _railwayUrl = 'https://pichangaya-production-0eb7.up.railway.app';
 
   static String get baseUrl {
-    return '$_railwayUrl/api/v1';
+    if (kIsWeb) return 'http://localhost:8000/api/v1';
+    return 'http://10.0.2.2:8000/api/v1';
+    // PRODUCCIÓN: return '$_railwayUrl/api/v1';
   }
 
   static String get wsTimers {
-    return 'wss://pichangaya-production-0eb7.up.railway.app/ws/timers';
+    if (kIsWeb) return 'ws://localhost:8000/ws/timers';
+    return 'ws://10.0.2.2:8000/ws/timers';
+    // PRODUCCIÓN: return 'wss://pichangaya-production-0eb7.up.railway.app/ws/timers';
   }
 
   // Auth

@@ -11,8 +11,6 @@ import 'package:pichangaya/features/super_admin/pages/super_admin_historial_pago
 import 'package:pichangaya/features/super_admin/pages/super_admin_alertas_page.dart';
 import 'package:pichangaya/features/super_admin/pages/super_admin_planes_page.dart';
 import 'package:pichangaya/features/super_admin/pages/super_admin_reportes_page.dart';
-import 'package:pichangaya/features/super_admin/pages/super_admin_locales_page.dart';
-import 'package:pichangaya/features/super_admin/pages/super_admin_canchas_overview_page.dart';
 
 class SuperAdminShell extends StatefulWidget {
   const SuperAdminShell({super.key});
@@ -28,8 +26,6 @@ class _State extends State<SuperAdminShell> {
   static const _navItems = [
     {'icon': '📊', 'label': 'Dashboard'},
     {'icon': '👥', 'label': 'Admins'},
-    {'icon': '🏟️', 'label': 'Locales'},
-    {'icon': '⚽', 'label': 'Canchas'},
     {'icon': '💳', 'label': 'Suscripciones'},
     {'icon': '📋', 'label': 'Historial Pagos'},
     {'icon': '⚠️', 'label': 'Alertas'},
@@ -40,8 +36,6 @@ class _State extends State<SuperAdminShell> {
   List<Widget> get _pages => [
     const SuperAdminDashboardPage(),
     const SuperAdminAdminsPage(),
-    const SuperAdminLocalesPage(),
-    const SuperAdminCanchasOverviewPage(),
     const SuperAdminSuscripcionesPage(),
     const SuperAdminHistorialPagosPage(),
     const SuperAdminAlertasPage(),
@@ -201,7 +195,7 @@ class _State extends State<SuperAdminShell> {
   }
 
   Widget _buildTopBar() {
-    final titles = ['📊 Dashboard', '👥 Admins', '🏟️ Locales', '⚽ Canchas', '💳 Suscripciones', '📋 Historial Pagos', '⚠️ Alertas', '💎 Planes', '📈 Reportes'];
+    final titles = ['📊 Dashboard', '👥 Admins', '💳 Suscripciones', '📋 Historial Pagos', '⚠️ Alertas', '💎 Planes', '📈 Reportes'];
     return Container(
       height: 56,
       decoration: const BoxDecoration(
