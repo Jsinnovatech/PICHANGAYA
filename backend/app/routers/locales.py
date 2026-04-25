@@ -11,9 +11,24 @@ from app.models.local import Local
 from app.models.cancha import Cancha
 from app.models.horario import HorarioDisponible
 from app.models.reserva import Reserva, EstadoReservaEnum
+from app.models.configuracion import Configuracion
 from app.schemas.locales import LocalResponse, CanchaResponse, SlotDisponibilidad
 
 router = APIRouter(prefix="/locales", tags=["Locales"])
+
+
+@router.get("/configuracion/pagos")
+async def get_datos_pago(db: AsyncSession = Depends(get_db)):
+    """Devuelve los datos de pago públicos (Yape, Plin, BCP, BBVA) sin auth."""
+    result = await db.execute(select(Configuracion).where(Configuracion.id == 1))
+    config = result.scalar_one_or_none()
+    return {
+        "yape_numero":   config.yape_numero   if config else None,
+        "plin_numero":   config.plin_numero   if config else None,
+        "cuenta_bcp":    config.cuenta_bcp    if config else None,
+        "cuenta_bbva":   config.cuenta_bbva   if config else None,
+        "titular":       config.razon_social  if config else "PichangaYa",
+    }
 
 
 def calcular_distancia_km(lat1, lon1, lat2, lon2) -> float:

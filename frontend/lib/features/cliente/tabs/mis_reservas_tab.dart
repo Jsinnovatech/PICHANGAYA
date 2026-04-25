@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
@@ -84,16 +85,19 @@ class _MisReservasTabState extends State<MisReservasTab> {
           backgroundColor: Color(0xFF1B5E20),
         ));
       }
-    } catch (e) {
-      String msg = 'Error al cancelar la reserva';
-      if (e.toString().contains('400')) {
-        msg = 'Solo puedes cancelar reservas pendientes';
-      } else if (e.toString().contains('404')) {
-        msg = 'Reserva no encontrada';
-      }
+    } on DioException catch (e) {
+      String msg = e.response?.data?['detail']?.toString()
+          ?? 'Error al cancelar la reserva';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(msg),
+          backgroundColor: AppColors.rojo,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Error inesperado al cancelar'),
           backgroundColor: AppColors.rojo,
         ));
       }

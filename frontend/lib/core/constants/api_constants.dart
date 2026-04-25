@@ -1,20 +1,22 @@
-import 'package:flutter/foundation.dart';
+// ignore: unused_import
+import 'package:flutter/foundation.dart'; // kIsWeb — usado en modo desarrollo
 
 class ApiConstants {
-  // Detecta automaticamente si es web (Chrome) o Android emulator
   static const String _railwayUrl = 'https://pichangaya-production-0eb7.up.railway.app';
 
-  static String get baseUrl {
-    if (kIsWeb) return 'http://localhost:8000/api/v1';
-    return 'http://10.0.2.2:8000/api/v1';
-    // PRODUCCIÓN: return '$_railwayUrl/api/v1';
-  }
+  // ── PRODUCCIÓN ───────────────────────────────────────────────
+  static String get baseUrl => '$_railwayUrl/api/v1';
+  static String get wsTimers => 'wss://pichangaya-production-0eb7.up.railway.app/ws/timers';
 
-  static String get wsTimers {
-    if (kIsWeb) return 'ws://localhost:8000/ws/timers';
-    return 'ws://10.0.2.2:8000/ws/timers';
-    // PRODUCCIÓN: return 'wss://pichangaya-production-0eb7.up.railway.app/ws/timers';
-  }
+  // ── DESARROLLO LOCAL (descomentar y comentar las de arriba) ──
+  // static String get baseUrl {
+  //   if (kIsWeb) return 'http://localhost:8000/api/v1';
+  //   return 'http://10.0.2.2:8000/api/v1';
+  // }
+  // static String get wsTimers {
+  //   if (kIsWeb) return 'ws://localhost:8000/ws/timers';
+  //   return 'ws://10.0.2.2:8000/ws/timers';
+  // }
 
   // Auth
   static const String register = '/auth/register';
@@ -42,6 +44,8 @@ class ApiConstants {
   static const String adminLocales  = '/admin/locales';
   static const String adminCanchas  = '/admin/canchas';
   static const String adminHorarios = '/admin/horarios';
+  static const String adminBloqueos = '/admin/bloqueos';
+  static const String datosPago    = '/locales/configuracion/pagos';
 
   // Suscripcion
   static const String miSuscripcion = '/suscripcion/mi-suscripcion';

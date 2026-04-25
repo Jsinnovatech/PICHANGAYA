@@ -49,25 +49,30 @@ async def mis_pagos(
     )
     pagos = result.scalars().all()
 
-    respuesta = []
-    for pago in pagos:
-        reserva_result = await db.execute(
-            select(Reserva).where(Reserva.id == pago.reserva_id)
-        )
-        reserva = reserva_result.scalar_one_or_none()
+    if not pagos:
+        return []
 
-        respuesta.append(PagoClienteResponse(
+    # Batch query — sin N+1
+    reserva_ids = list({p.reserva_id for p in pagos})
+    reservas_map = {
+        r.id: r for r in (await db.execute(
+            select(Reserva).where(Reserva.id.in_(reserva_ids))
+        )).scalars().all()
+    }
+
+    return [
+        PagoClienteResponse(
             id=pago.id,
             reserva_id=pago.reserva_id,
-            reserva_codigo=reserva.codigo if reserva else None,
+            reserva_codigo=reservas_map[pago.reserva_id].codigo if pago.reserva_id in reservas_map else None,
             monto=float(pago.monto),
             metodo=pago.metodo.value,
             estado=pago.estado.value,
             voucher_url=pago.voucher_url,
             fecha=str(pago.created_at.date()) if pago.created_at else None
-        ))
-
-    return respuesta
+        )
+        for pago in pagos
+    ]
 
 
 @router.post("/{pago_id}/voucher", response_model=VoucherUploadResponse)
@@ -99,10 +104,12 @@ async def subir_voucher(
 
     # ── Subir a imgbb ─────────────────────────────────────────
     nombre_archivo = f"voucher_{pago_id}"
-    if settings.IMGBB_API_KEY and settings.IMGBB_API_KEY != "pendiente":
-        voucher_url = await subir_imagen_imgbb(imagen_bytes, nombre_archivo)
-    else:
-        voucher_url = f"https://placeholder.com/voucher/{pago_id}"
+    if not settings.IMGBB_API_KEY or settings.IMGBB_API_KEY == "pendiente":
+        raise HTTPException(
+            status_code=503,
+            detail="El servicio de subida de imágenes no está configurado. Contacta al administrador."
+        )
+    voucher_url = await subir_imagen_imgbb(imagen_bytes, nombre_archivo)
 
     pago.voucher_url = voucher_url
     pago.estado = EstadoPagoEnum.pendiente

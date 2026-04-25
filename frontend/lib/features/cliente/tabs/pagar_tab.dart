@@ -148,12 +148,12 @@ class _PagarTabState extends State<PagarTab> {
       if (_pagos.isEmpty)
         const Expanded(child: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('✅', style: TextStyle(fontSize: 48)),
+            Text('💳', style: TextStyle(fontSize: 48)),
             SizedBox(height: 12),
-            Text('No tienes pagos pendientes',
+            Text('No tienes pagos registrados',
                 style: TextStyle(color: AppColors.texto2, fontSize: 15)),
             SizedBox(height: 4),
-            Text('Tus pagos aparecerán aquí',
+            Text('Reserva una cancha para ver tus pagos aquí',
                 style: TextStyle(color: AppColors.texto2, fontSize: 12)),
           ]),
         ))
@@ -262,72 +262,142 @@ class _PagarTabState extends State<PagarTab> {
             ]),
           ),
 
-          // Uploader si está seleccionado y sin voucher
-          if (sel && pago.voucherUrl == null) ...[
+          // ── Sección expandida al tocar el card ──────────────────
+          if (sel) ...[
             const Divider(color: AppColors.borde, height: 1),
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Column(children: [
-                GestureDetector(
-                  onTap: _seleccionarImagen,
-                  child: Container(
-                    height: _imagenBytes != null ? 120 : 90,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+                // Aviso si fue rechazado
+                if (pago.estado == 'rechazado') ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                        color: AppColors.negro3,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: _imagenBytes != null
-                                ? AppColors.verde
-                                : AppColors.borde)),
-                    child: _imagenBytes != null
-                        ? Stack(children: [
-                            ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.memory(_imagenBytes!,
-                                    width: double.infinity, fit: BoxFit.cover)),
-                            Positioned(
-                                top: 6, right: 6,
-                                child: GestureDetector(
-                                    onTap: () => setState(() { _imagenBytes = null; }),
-                                    child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(
-                                            color: Colors.black54,
-                                            shape: BoxShape.circle),
-                                        child: const Icon(Icons.close,
-                                            color: Colors.white, size: 14)))),
-                          ])
-                        : const Center(
-                            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            Icon(Icons.upload_file, color: AppColors.verde, size: 28),
-                            SizedBox(height: 4),
-                            Text('Toca para subir voucher',
-                                style: TextStyle(color: AppColors.texto2, fontSize: 12)),
-                          ])),
+                      color: AppColors.rojo.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.rojo.withOpacity(0.35)),
+                    ),
+                    child: const Row(children: [
+                      Icon(Icons.warning_amber_rounded, color: AppColors.rojo, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(child: Text(
+                        'Tu pago fue rechazado. Sube un nuevo voucher o contacta al local.',
+                        style: TextStyle(color: AppColors.rojo, fontSize: 12),
+                      )),
+                    ]),
                   ),
-                ),
-                if (_errorSubida != null) ...[
-                  const SizedBox(height: 8),
-                  Text(_errorSubida!,
-                      style: const TextStyle(color: AppColors.rojo, fontSize: 12)),
+                  const SizedBox(height: 10),
                 ],
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                      child: OutlinedButton(
-                          onPressed: _seleccionarImagen,
-                          child: const Text('📷 Elegir'))),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: ElevatedButton(
-                          onPressed: (_imagenBytes != null && !_subiendo) ? _subirVoucher : null,
-                          child: _subiendo
-                              ? const SizedBox(
-                                  height: 18, width: 18,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: AppColors.negro))
-                              : const Text('✅ Enviar'))),
-                ]),
+
+                // Ver voucher ya enviado (solo lectura si está verificado)
+                if (pago.voucherUrl != null && pago.estado == 'verificado') ...[
+                  const Text('VOUCHER VERIFICADO',
+                      style: TextStyle(fontSize: 10, color: AppColors.verde,
+                          fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      pago.voucherUrl!,
+                      height: 140,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (_, child, progress) => progress == null
+                          ? child
+                          : Container(height: 140,
+                              color: AppColors.negro3,
+                              child: const Center(child: CircularProgressIndicator(
+                                  color: AppColors.verde, strokeWidth: 2))),
+                      errorBuilder: (_, __, ___) => Container(
+                          height: 60, color: AppColors.negro3,
+                          child: const Center(child: Text('No se pudo cargar la imagen',
+                              style: TextStyle(color: AppColors.texto2, fontSize: 12)))),
+                    ),
+                  ),
+                ],
+
+                // Uploader: si no está verificado (pendiente sin voucher, pendiente con voucher, o rechazado)
+                if (pago.estado != 'verificado') ...[
+                  if (pago.voucherUrl != null) ...[
+                    const Text('VOUCHER ACTUAL',
+                        style: TextStyle(fontSize: 10, color: AppColors.texto2,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        pago.voucherUrl!,
+                        height: 100,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('REEMPLAZAR VOUCHER',
+                        style: TextStyle(fontSize: 10, color: AppColors.amarillo,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                    const SizedBox(height: 6),
+                  ] else ...[
+                    const Text('SUBIR VOUCHER',
+                        style: TextStyle(fontSize: 10, color: AppColors.texto2,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                    const SizedBox(height: 6),
+                  ],
+
+                  GestureDetector(
+                    onTap: _seleccionarImagen,
+                    child: Container(
+                      height: _imagenBytes != null ? 120 : 80,
+                      decoration: BoxDecoration(
+                          color: AppColors.negro3,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: _imagenBytes != null ? AppColors.verde : AppColors.borde)),
+                      child: _imagenBytes != null
+                          ? Stack(children: [
+                              ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.memory(_imagenBytes!,
+                                      width: double.infinity, fit: BoxFit.cover)),
+                              Positioned(
+                                  top: 6, right: 6,
+                                  child: GestureDetector(
+                                      onTap: () => setState(() => _imagenBytes = null),
+                                      child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                              color: Colors.black54, shape: BoxShape.circle),
+                                          child: const Icon(Icons.close, color: Colors.white, size: 14)))),
+                            ])
+                          : const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              Icon(Icons.upload_file, color: AppColors.verde, size: 26),
+                              SizedBox(height: 4),
+                              Text('Toca para seleccionar imagen',
+                                  style: TextStyle(color: AppColors.texto2, fontSize: 12)),
+                            ])),
+                    ),
+                  ),
+
+                  if (_errorSubida != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_errorSubida!, style: const TextStyle(color: AppColors.rojo, fontSize: 12)),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: OutlinedButton(
+                        onPressed: _seleccionarImagen,
+                        child: const Text('📷 Elegir'))),
+                    const SizedBox(width: 8),
+                    Expanded(child: ElevatedButton(
+                        onPressed: (_imagenBytes != null && !_subiendo) ? _subirVoucher : null,
+                        child: _subiendo
+                            ? const SizedBox(height: 18, width: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.negro))
+                            : const Text('✅ Enviar'))),
+                  ]),
+                ],
               ]),
             ),
           ],

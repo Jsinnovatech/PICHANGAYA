@@ -16,6 +16,7 @@ from app.models.user import User, RolEnum
 from app.models.cancha import Cancha
 from app.models.local import Local
 from app.models.horario import HorarioDisponible
+from app.models.bloqueo import BloqueoHorario
 from app.models.comprobante import Comprobante, EstadoComprobanteEnum
 from app.notificaciones import notif_reserva_confirmada, notif_reserva_rechazada
 from pydantic import BaseModel
@@ -413,11 +414,23 @@ async def admin_eliminar_reserva(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    admin_uuid = uuid.UUID(current_user["id"])
+
+    # Verificar que la reserva pertenece a una cancha del local de este admin
+    cancha_ids_r = await db.execute(
+        select(Cancha.id).join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+
     result = await db.execute(select(Reserva).where(Reserva.id == reserva_id))
     reserva = result.scalar_one_or_none()
 
     if not reserva:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    if reserva.cancha_id not in admin_cancha_ids:
+        raise HTTPException(status_code=403, detail="No tienes permiso sobre esta reserva")
 
     # Cancelar el pago asociado primero
     pago_result = await db.execute(select(Pago).where(Pago.reserva_id == reserva.id))
@@ -438,11 +451,23 @@ async def admin_cambiar_estado_reserva(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    admin_uuid = uuid.UUID(current_user["id"])
+
+    # Verificar que la reserva pertenece a una cancha del local de este admin
+    cancha_ids_r = await db.execute(
+        select(Cancha.id).join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+
     result = await db.execute(select(Reserva).where(Reserva.id == reserva_id))
     reserva = result.scalar_one_or_none()
 
     if not reserva:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    if reserva.cancha_id not in admin_cancha_ids:
+        raise HTTPException(status_code=403, detail="No tienes permiso sobre esta reserva")
 
     try:
         nuevo_estado = EstadoReservaEnum(data.estado)
@@ -871,7 +896,8 @@ async def admin_timers_hoy(
     )
     admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
 
-    hoy = datetime.now(timezone.utc).date()
+    LIMA_TZ = timezone(timedelta(hours=-5))
+    hoy = datetime.now(LIMA_TZ).date()
     result = await db.execute(
         select(Reserva).where(
             Reserva.fecha == hoy,
@@ -1274,10 +1300,22 @@ async def get_disponibilidad_canchas(
         )
         reservas_activas = reservas_r.fetchall()
 
+        # Bloqueos manuales del día
+        bloqueos_r = await db.execute(
+            select(BloqueoHorario.hora_inicio, BloqueoHorario.hora_fin).where(
+                BloqueoHorario.cancha_id == cancha.id,
+                BloqueoHorario.fecha == fecha,
+            )
+        )
+        bloqueos_activos = bloqueos_r.fetchall()
+
         def _ocupado(s_ini, s_fin) -> bool:
             s0, s1 = _t_min(s_ini), _t_min(s_fin)
             for r_ini, r_fin in reservas_activas:
                 if _t_min(r_ini) < s1 and _t_min(r_fin) > s0:
+                    return True
+            for b_ini, b_fin in bloqueos_activos:
+                if _t_min(b_ini) < s1 and _t_min(b_fin) > s0:
                     return True
             return False
 
@@ -1423,3 +1461,179 @@ async def crear_reserva_manual(
         "precio_total": precio_total,
         "mensaje": "Reserva manual creada exitosamente"
     }
+
+
+# ══════════════════════════════════════════════
+# BLOQUEOS DE HORARIO
+# ══════════════════════════════════════════════
+
+class BloqueoCreateRequest(BaseModel):
+    cancha_id: uuid.UUID
+    fecha: date
+    hora_inicio: str   # "HH:MM"
+    hora_fin: str      # "HH:MM"
+    motivo: Optional[str] = None
+
+
+class BloqueoResponse(BaseModel):
+    id: uuid.UUID
+    cancha_id: uuid.UUID
+    cancha_nombre: Optional[str] = None
+    fecha: date
+    hora_inicio: str
+    hora_fin: str
+    motivo: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/bloqueos", response_model=List[BloqueoResponse])
+async def admin_get_bloqueos(
+    cancha_id: Optional[uuid.UUID] = None,
+    fecha: Optional[date] = None,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Lista los bloqueos del admin, filtrables por cancha y/o fecha."""
+    admin_uuid = uuid.UUID(current_user["id"])
+
+    cancha_ids_r = await db.execute(
+        select(Cancha.id).join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+    if not admin_cancha_ids:
+        return []
+
+    query = select(BloqueoHorario).where(BloqueoHorario.cancha_id.in_(admin_cancha_ids))
+    if cancha_id:
+        query = query.where(BloqueoHorario.cancha_id == cancha_id)
+    if fecha:
+        query = query.where(BloqueoHorario.fecha == fecha)
+
+    bloqueos = (await db.execute(query.order_by(BloqueoHorario.fecha, BloqueoHorario.hora_inicio))).scalars().all()
+
+    # Nombres de canchas en batch
+    ids_usados = list({b.cancha_id for b in bloqueos})
+    canchas_map = {
+        c.id: c.nombre for c in (await db.execute(
+            select(Cancha).where(Cancha.id.in_(ids_usados))
+        )).scalars().all()
+    } if ids_usados else {}
+
+    return [
+        BloqueoResponse(
+            id=b.id,
+            cancha_id=b.cancha_id,
+            cancha_nombre=canchas_map.get(b.cancha_id),
+            fecha=b.fecha,
+            hora_inicio=str(b.hora_inicio)[:5],
+            hora_fin=str(b.hora_fin)[:5],
+            motivo=b.motivo,
+        )
+        for b in bloqueos
+    ]
+
+
+@router.post("/bloqueos", response_model=BloqueoResponse, status_code=201)
+async def admin_crear_bloqueo(
+    data: BloqueoCreateRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Bloquea un rango horario de una cancha (mantenimiento, evento privado, etc.)."""
+    admin_uuid = uuid.UUID(current_user["id"])
+
+    # Verificar pertenencia de la cancha
+    cancha_r = await db.execute(
+        select(Cancha).join(Local, Local.id == Cancha.local_id)
+        .where(Cancha.id == data.cancha_id, Local.admin_id == admin_uuid)
+    )
+    cancha = cancha_r.scalar_one_or_none()
+    if not cancha:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada o no te pertenece")
+
+    # Parsear horas
+    def _parse(s: str) -> time:
+        try:
+            h, m = s.split(":")[:2]
+            return time(int(h), int(m))
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Hora inválida: {s}")
+
+    hora_inicio_t = _parse(data.hora_inicio)
+    hora_fin_t    = _parse(data.hora_fin)
+
+    # Verificar que no haya reservas activas en ese rango
+    def _t_min(t) -> int:
+        return 1440 if (t.hour == 0 and t.minute == 0) else t.hour * 60 + t.minute
+
+    new_start = _t_min(hora_inicio_t)
+    new_end   = _t_min(hora_fin_t)
+
+    reservas_conflicto = (await db.execute(
+        select(Reserva).where(
+            Reserva.cancha_id == data.cancha_id,
+            Reserva.fecha == data.fecha,
+            Reserva.estado.in_([EstadoReservaEnum.pending, EstadoReservaEnum.confirmed, EstadoReservaEnum.active])
+        )
+    )).scalars().all()
+
+    conflictos = [r for r in reservas_conflicto
+                  if _t_min(r.hora_inicio) < new_end and _t_min(r.hora_fin) > new_start]
+    if conflictos:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Hay {len(conflictos)} reserva(s) activa(s) en ese rango. Cancélalas primero."
+        )
+
+    bloqueo = BloqueoHorario(
+        id=uuid.uuid4(),
+        cancha_id=data.cancha_id,
+        fecha=data.fecha,
+        hora_inicio=hora_inicio_t,
+        hora_fin=hora_fin_t,
+        motivo=data.motivo.strip() if data.motivo else None,
+        creado_por=admin_uuid,
+    )
+    db.add(bloqueo)
+    await db.commit()
+    await db.refresh(bloqueo)
+
+    return BloqueoResponse(
+        id=bloqueo.id,
+        cancha_id=bloqueo.cancha_id,
+        cancha_nombre=cancha.nombre,
+        fecha=bloqueo.fecha,
+        hora_inicio=str(bloqueo.hora_inicio)[:5],
+        hora_fin=str(bloqueo.hora_fin)[:5],
+        motivo=bloqueo.motivo,
+    )
+
+
+@router.delete("/bloqueos/{bloqueo_id}", status_code=204)
+async def admin_eliminar_bloqueo(
+    bloqueo_id: uuid.UUID,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Elimina un bloqueo de horario."""
+    admin_uuid = uuid.UUID(current_user["id"])
+
+    bloqueo_r = await db.execute(select(BloqueoHorario).where(BloqueoHorario.id == bloqueo_id))
+    bloqueo = bloqueo_r.scalar_one_or_none()
+    if not bloqueo:
+        raise HTTPException(status_code=404, detail="Bloqueo no encontrado")
+
+    # Verificar pertenencia
+    cancha_ids_r = await db.execute(
+        select(Cancha.id).join(Local, Local.id == Cancha.local_id)
+        .where(Local.admin_id == admin_uuid)
+    )
+    admin_cancha_ids = [row[0] for row in cancha_ids_r.all()]
+    if bloqueo.cancha_id not in admin_cancha_ids:
+        raise HTTPException(status_code=403, detail="No tienes permiso sobre este bloqueo")
+
+    await db.delete(bloqueo)
+    await db.commit()

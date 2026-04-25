@@ -106,8 +106,13 @@ class _CanchasTabState extends State<CanchasTab> {
         _canchas = (res.data as List).map((j) => CanchaModel.fromJson(j)).toList();
         _loading = false;
       });
-    } catch (_) {
-      setState(() { _error = 'Error al cargar canchas'; _loading = false; });
+    } on DioException catch (e) {
+      final msg = e.response?.data?['detail']?.toString()
+          ?? e.message
+          ?? 'Error al cargar canchas';
+      setState(() { _error = msg; _loading = false; });
+    } catch (e) {
+      setState(() { _error = 'Error inesperado: $e'; _loading = false; });
     }
   }
 
@@ -1304,12 +1309,47 @@ class _ModalRealizarPagoState extends State<_ModalRealizarPago> {
   bool _subiendo = false;
   String? _error;
 
-  static const _datosPago = {
-    'yape':          {'numero': '993 592 328', 'titular': 'PICHANGAYA SAC',       'icono': '📱'},
-    'plin':          {'numero': '993 592 328', 'titular': 'PICHANGAYA SAC',       'icono': '💙'},
-    'transferencia': {'numero': '215-12345678-0-01', 'titular': 'PICHANGAYA SAC (BCP)', 'icono': '🏦'},
+  @override
+  void initState() {
+    super.initState();
+    _ModalRealizarPagoState._cargarDatosPagoYRebuild();
+  }
+
+  Future<void> _cargarDatosPagoYRebuild() async {
+    await _ModalRealizarPago._cargarDatosPago();
+    if (mounted) setState(() {});
+  }
+
+  // Datos cargados desde el backend — se sobreescriben al inicializar
+  static Map<String, Map<String, String>> _datosPago = {
+    'yape':          {'numero': 'Cargando...', 'titular': 'PichangaYa', 'icono': '📱'},
+    'plin':          {'numero': 'Cargando...', 'titular': 'PichangaYa', 'icono': '💙'},
+    'transferencia': {'numero': 'Cargando...', 'titular': 'PichangaYa (BCP)',   'icono': '🏦'},
     'efectivo':      {'numero': 'Paga en el local', 'titular': 'Al momento de jugar', 'icono': '💵'},
   };
+
+  static bool _datosPagoCargados = false;
+
+  static Future<void> _cargarDatosPago() async {
+    if (_datosPagoCargados) return;
+    try {
+      final res = await ApiClient().dio.get(ApiConstants.datosPago);
+      final d = res.data as Map<String, dynamic>;
+      final yape   = d['yape_numero']?.toString()  ?? '';
+      final plin   = d['plin_numero']?.toString()  ?? '';
+      final bcp    = d['cuenta_bcp']?.toString()   ?? '';
+      final titular = d['titular']?.toString()     ?? 'PichangaYa';
+      _datosPago = {
+        'yape':          {'numero': yape.isNotEmpty  ? yape  : '—', 'titular': titular,           'icono': '📱'},
+        'plin':          {'numero': plin.isNotEmpty  ? plin  : '—', 'titular': titular,           'icono': '💙'},
+        'transferencia': {'numero': bcp.isNotEmpty   ? bcp   : '—', 'titular': '$titular (BCP)', 'icono': '🏦'},
+        'efectivo':      {'numero': 'Paga en el local', 'titular': 'Al momento de jugar',        'icono': '💵'},
+      };
+      _datosPagoCargados = true;
+    } catch (_) {
+      // Si falla, quedan los valores por defecto — no bloquea el flujo
+    }
+  }
 
   Future<void> _seleccionarImagen() async {
     final picker = ImagePicker();
