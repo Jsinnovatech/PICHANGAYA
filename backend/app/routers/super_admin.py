@@ -218,8 +218,8 @@ async def listar_admins(
         )
         admins = result.scalars().all()
     except Exception as e:
-        logger.error(f"Error al consultar admins: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error al consultar admins: {str(e)}")
+        logger.error("Error al consultar admins", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
     if not admins:
         return []
@@ -237,8 +237,8 @@ async def listar_admins(
             .order_by(Suscripcion.created_at.desc())
         )).scalars().all()
     except Exception as e:
-        logger.error(f"Error al consultar suscripciones: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error al consultar suscripciones: {str(e)}")
+        logger.error("Error al consultar suscripciones", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
     # Mapa admin_id → suscripción más reciente activa
     sus_map: dict[uuid.UUID, Suscripcion] = {}
@@ -345,8 +345,8 @@ async def alertas_vencimiento(
         )
         suscripciones = result.scalars().all()
     except Exception as e:
-        logger.error(f"Error alertas-vencimiento: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error alertas-vencimiento", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
     if not suscripciones:
         return []
@@ -395,8 +395,8 @@ async def suscripciones_pendientes(
         )
         suscripciones = result.scalars().all()
     except Exception as e:
-        logger.error(f"Error suscripciones-pendientes: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error suscripciones-pendientes", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
     if not suscripciones:
         return []
@@ -511,8 +511,8 @@ async def historial_pagos(
         result = await db.execute(query)
         suscripciones = result.scalars().all()
     except Exception as e:
-        logger.error(f"Error historial-pagos: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error historial-pagos", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
     if not suscripciones:
         return []
@@ -730,8 +730,8 @@ async def super_admin_get_reservas(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[super_admin] Error al consultar reservas: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[super_admin] Error al consultar reservas", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
     if not reservas:
         return []
@@ -997,7 +997,8 @@ async def listar_locales(
         locales_result = await db.execute(select(Local).order_by(Local.created_at.desc()))
         locales = locales_result.scalars().all()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error al listar locales", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
     if not locales:
         return []

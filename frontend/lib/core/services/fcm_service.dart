@@ -18,9 +18,12 @@ class FcmService {
   FcmService._();
   static final FcmService instance = FcmService._();
 
-  // ⚠️ Reemplaza con tu VAPID key de Firebase Console →
-  // Project Settings → Cloud Messaging → Web configuration → Key pair
-  static const String _vapidKey = 'BO-zL00Gw34QLvk5Zh45wQYdjqLFpusN0l2Z3mUX_to-wIUvhGYW6rY9kgEzWy3sdTKKz5zs8T8dR5gd8GxPrWI';
+  // VAPID key leída de dart-define (--dart-define=VAPID_KEY=xxx).
+  // El defaultValue solo actúa como fallback en desarrollo local.
+  static const String _vapidKey = String.fromEnvironment(
+    'VAPID_KEY',
+    defaultValue: 'BO-zL00Gw34QLvk5Zh45wQYdjqLFpusN0l2Z3mUX_to-wIUvhGYW6rY9kgEzWy3sdTKKz5zs8T8dR5gd8GxPrWI',
+  );
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotif =

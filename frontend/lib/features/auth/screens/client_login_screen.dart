@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
@@ -180,40 +181,42 @@ class _State extends State<ClientLoginScreen> {
                       child: const Text('← Volver',
                           style: TextStyle(color: AppColors.texto2))),
 
-                  // ── Hint demo ─────────────────────────────────────────
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                        color: AppColors.negro3,
-                        borderRadius: BorderRadius.circular(8)),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('💡 Demo cliente:',
-                            style: TextStyle(
-                                fontSize: 11, color: AppColors.texto2)),
-                        SizedBox(height: 2),
-                        Text.rich(TextSpan(
-                          style:
-                              TextStyle(fontSize: 12, color: AppColors.texto2),
-                          children: [
-                            TextSpan(
-                                text: '999111222',
-                                style: TextStyle(
-                                    color: AppColors.verde,
-                                    fontWeight: FontWeight.w700)),
-                            TextSpan(text: '  /  '),
-                            TextSpan(
-                                text: 'cliente123',
-                                style: TextStyle(
-                                    color: AppColors.verde,
-                                    fontWeight: FontWeight.w700)),
-                          ],
-                        )),
-                      ],
+                  // ── Hint demo (solo en modo DEBUG) ────────────────────
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                          color: AppColors.negro3,
+                          borderRadius: BorderRadius.circular(8)),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('💡 Demo cliente:',
+                              style: TextStyle(
+                                  fontSize: 11, color: AppColors.texto2)),
+                          SizedBox(height: 2),
+                          Text.rich(TextSpan(
+                            style:
+                                TextStyle(fontSize: 12, color: AppColors.texto2),
+                            children: [
+                              TextSpan(
+                                  text: '999111222',
+                                  style: TextStyle(
+                                      color: AppColors.verde,
+                                      fontWeight: FontWeight.w700)),
+                              TextSpan(text: '  /  '),
+                              TextSpan(
+                                  text: 'cliente123',
+                                  style: TextStyle(
+                                      color: AppColors.verde,
+                                      fontWeight: FontWeight.w700)),
+                            ],
+                          )),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ]),
           ),
         )),

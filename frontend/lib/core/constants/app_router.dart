@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pichangaya/features/auth/screens/entry_screen.dart';
 import 'package:pichangaya/features/auth/screens/client_login_screen.dart';
@@ -7,10 +8,19 @@ import 'package:pichangaya/features/auth/screens/splash_screen.dart';
 import 'package:pichangaya/features/cliente/screens/client_shell.dart';
 import 'package:pichangaya/features/admin/screens/admin_shell.dart';
 import 'package:pichangaya/features/super_admin/screens/super_admin_shell.dart';
+import 'package:pichangaya/shared/api/api_client.dart';
 
 class AppRouter {
   static final router = GoRouter(
     initialLocation: '/splash',
+    redirect: (BuildContext context, GoRouterState state) async {
+      const publicRoutes = ['/splash', '/entry', '/login', '/register', '/admin-login'];
+      final isPublic = publicRoutes.contains(state.matchedLocation);
+      if (isPublic) return null;
+      final loggedIn = await ApiClient().isLoggedIn();
+      if (!loggedIn) return '/entry';
+      return null;
+    },
     routes: [
       GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
       GoRoute(path: '/entry', builder: (_, __) => const EntryScreen()),

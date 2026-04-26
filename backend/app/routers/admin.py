@@ -19,102 +19,30 @@ from app.models.horario import HorarioDisponible
 from app.models.bloqueo import BloqueoHorario
 from app.models.comprobante import Comprobante, EstadoComprobanteEnum
 from app.notificaciones import notif_reserva_confirmada, notif_reserva_rechazada
-from pydantic import BaseModel
+from app.schemas.admin import (
+    ReservaAdminResponse,
+    PagoAdminResponse,
+    ClienteAdminResponse,
+    VerificarPagoRequest,
+    CambiarEstadoReservaRequest,
+    ReservaManualRequest,
+    SlotAdminResponse,
+    CanchaDisponibilidadResponse,
+    CanchaAdminResponse,
+    CanchaCreateRequest,
+    CanchaUpdateRequest,
+    TimerReservaResponse,
+    FacturacionItemResponse,
+    LocalAdminResponse,
+    LocalCreateRequest,
+    LocalUpdateRequest,
+    BloqueoCreateRequest,
+    BloqueoResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
-# ══════════════════════════════════════════════
-# SCHEMAS
-# ══════════════════════════════════════════════
-
-class ReservaAdminResponse(BaseModel):
-    id: uuid.UUID
-    codigo: str
-    cliente_nombre: str
-    cliente_celular: str
-    cancha_nombre: Optional[str] = None
-    local_nombre: Optional[str] = None
-    fecha: date
-    hora_inicio: str
-    hora_fin: str
-    precio_total: float
-    estado: str
-    tipo_doc: Optional[str] = None
-    metodo_pago: Optional[str] = None
-    voucher_url: Optional[str] = None
-    pago_estado: Optional[str] = None
-    pago_id: Optional[uuid.UUID] = None
-
-    class Config:
-        from_attributes = True
-
-
-class PagoAdminResponse(BaseModel):
-    id: uuid.UUID
-    reserva_id: uuid.UUID
-    reserva_codigo: Optional[str] = None
-    cliente_nombre: Optional[str] = None
-    cliente_celular: Optional[str] = None
-    monto: float
-    metodo: str
-    estado: str
-    voucher_url: Optional[str] = None
-    fecha: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class ClienteAdminResponse(BaseModel):
-    id: uuid.UUID
-    nombre: str
-    celular: str
-    dni: Optional[str] = None
-    activo: bool
-    total_reservas: int = 0
-    total_gastado: float = 0.0
-
-    class Config:
-        from_attributes = True
-
-
-class VerificarPagoRequest(BaseModel):
-    accion: str
-    motivo: Optional[str] = None
-
-
-class CambiarEstadoReservaRequest(BaseModel):
-    estado: str
-    notas: Optional[str] = None
-
-
-class ReservaManualRequest(BaseModel):
-    cancha_id: uuid.UUID
-    fecha: date
-    hora_inicio: str   # "HH:MM"
-    hora_fin: str      # "HH:MM"
-    nombre_cliente: str
-    dni_cliente: str
-    metodo_pago: str   # yape | plin | efectivo
-    tipo_doc: str      # boleta | factura
-    ruc_factura: Optional[str] = None
-    razon_social: Optional[str] = None
-
-
-class SlotAdminResponse(BaseModel):
-    hora_inicio: str
-    hora_fin: str
-    disponible: bool
-    precio: float
-
-
-class CanchaDisponibilidadResponse(BaseModel):
-    cancha_id: uuid.UUID
-    cancha_nombre: str
-    tipo_piso: Optional[str] = None
-    precio_hora: float
-    slots: List[SlotAdminResponse]
 
 
 # ══════════════════════════════════════════════
@@ -340,10 +268,10 @@ async def admin_get_reservas(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error al consultar reservas en BD: {e}", exc_info=True)
+        logger.error("Error al consultar reservas en BD", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error al consultar la base de datos: {str(e)}"
+            detail="Error interno del servidor"
         )
 
     if not reservas:
@@ -469,11 +397,8 @@ async def admin_cambiar_estado_reserva(
     if reserva.cancha_id not in admin_cancha_ids:
         raise HTTPException(status_code=403, detail="No tienes permiso sobre esta reserva")
 
-    try:
-        nuevo_estado = EstadoReservaEnum(data.estado)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Estado inválido: {data.estado}")
-
+    # data.estado ya es EstadoReservaEnum — validado por Pydantic en el schema
+    nuevo_estado = data.estado
     reserva.estado = nuevo_estado
     if data.notas:
         reserva.notas = data.notas
@@ -591,9 +516,7 @@ async def admin_verificar_pago(
                 reserva.notas = f"Pago rechazado: {data.motivo}"
         mensaje = "Pago rechazado — Reserva cancelada"
 
-    else:
-        raise HTTPException(status_code=400, detail="Acción inválida. Use 'aprobar' o 'rechazar'")
-
+    # Acción ya validada por VerificarPagoRequest.accion_valida (Pydantic)
     # ── Commit principal (CRÍTICO — siempre se guarda) ─────────
     await db.commit()
 
@@ -722,34 +645,6 @@ async def admin_toggle_cliente(
 # CANCHAS
 # ══════════════════════════════════════════════
 
-class CanchaAdminResponse(BaseModel):
-    id: uuid.UUID
-    local_id: uuid.UUID
-    local_nombre: Optional[str] = None
-    nombre: str
-    descripcion: Optional[str] = None
-    capacidad: int
-    precio_hora: float
-    superficie: Optional[str] = None
-    activa: bool
-    class Config: from_attributes = True
-
-class CanchaCreateRequest(BaseModel):
-    local_id: uuid.UUID
-    nombre: str
-    descripcion: Optional[str] = None
-    capacidad: int = 10
-    precio_hora: float
-    superficie: Optional[str] = None
-
-class CanchaUpdateRequest(BaseModel):
-    nombre: Optional[str] = None
-    descripcion: Optional[str] = None
-    capacidad: Optional[int] = None
-    precio_hora: Optional[float] = None
-    superficie: Optional[str] = None
-
-
 @router.get("/canchas", response_model=List[CanchaAdminResponse])
 async def admin_get_canchas(
     current_user: dict = Depends(require_admin),
@@ -869,20 +764,6 @@ async def admin_actualizar_cancha(
 # TIMERS
 # ══════════════════════════════════════════════
 
-class TimerReservaResponse(BaseModel):
-    id: uuid.UUID
-    codigo: str
-    cliente_nombre: str
-    cliente_celular: str
-    cancha_nombre: Optional[str] = None
-    fecha: date
-    hora_inicio: str
-    hora_fin: str
-    estado: str
-    precio_total: float
-    class Config: from_attributes = True
-
-
 @router.get("/timers/hoy", response_model=List[TimerReservaResponse])
 async def admin_timers_hoy(
     current_user: dict = Depends(require_admin),
@@ -975,26 +856,6 @@ async def admin_finalizar_timer(
 # ══════════════════════════════════════════════
 # FACTURACION
 # ══════════════════════════════════════════════
-
-class FacturacionItemResponse(BaseModel):
-    reserva_id: uuid.UUID
-    codigo: str
-    cliente_nombre: str
-    cliente_celular: str
-    cancha_nombre: Optional[str] = None
-    fecha: date
-    monto: float
-    metodo_pago: str
-    tipo_doc: Optional[str] = None
-    ruc_factura: Optional[str] = None
-    razon_social: Optional[str] = None
-    comprobante_estado: Optional[str] = None
-    comprobante_serie: Optional[str] = None
-    comprobante_numero: Optional[int] = None
-    pdf_url: Optional[str] = None
-    fecha_pago: Optional[str] = None
-    class Config: from_attributes = True
-
 
 @router.get("/facturacion", response_model=List[FacturacionItemResponse])
 async def admin_get_facturacion(
@@ -1140,40 +1001,6 @@ async def admin_facturacion_stats(
 # ══════════════════════════════════════════════
 # LOCALES — CRUD del admin sobre sus propios locales
 # ══════════════════════════════════════════════
-
-class LocalAdminResponse(BaseModel):
-    id: uuid.UUID
-    nombre: str
-    direccion: str
-    lat: float
-    lng: float
-    telefono: Optional[str] = None
-    descripcion: Optional[str] = None
-    foto_url: Optional[str] = None
-    activo: bool
-    class Config: from_attributes = True
-
-
-class LocalCreateRequest(BaseModel):
-    nombre: str
-    direccion: str
-    lat: float
-    lng: float
-    telefono: Optional[str] = None
-    descripcion: Optional[str] = None
-    foto_url: Optional[str] = None
-
-
-class LocalUpdateRequest(BaseModel):
-    nombre: Optional[str] = None
-    direccion: Optional[str] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
-    telefono: Optional[str] = None
-    descripcion: Optional[str] = None
-    foto_url: Optional[str] = None
-    activo: Optional[bool] = None
-
 
 @router.get("/locales", response_model=List[LocalAdminResponse])
 async def admin_get_locales(
@@ -1370,23 +1197,13 @@ async def crear_reserva_manual(
     if not cancha:
         raise HTTPException(status_code=404, detail="Cancha no encontrada o no pertenece a tu local")
 
-    # Validar datos de factura
-    es_factura = data.tipo_doc == "factura"
-    if es_factura:
-        ruc = (data.ruc_factura or "").strip()
-        rs  = (data.razon_social or "").strip()
-        if len(ruc) != 11 or not ruc.isdigit():
-            raise HTTPException(status_code=400, detail="RUC inválido: debe tener 11 dígitos")
-        if not rs:
-            raise HTTPException(status_code=400, detail="Razón social obligatoria para factura")
+    # Validaciones de factura, hora y DNI ya resueltas por ReservaManualRequest (Pydantic)
+    es_factura = data.tipo_doc == TipoDocEnum.factura
 
-    # Parsear horas
+    # Parsear horas (ya validadas en formato HH:MM por el schema)
     def _parse_time(s: str) -> time:
-        try:
-            h, m = s.split(":")
-            return time(int(h), int(m))
-        except Exception:
-            raise HTTPException(status_code=400, detail=f"Hora inválida: {s}")
+        h, m = s.split(":")
+        return time(int(h), int(m))
 
     hora_inicio_t = _parse_time(data.hora_inicio)
     hora_fin_t    = _parse_time(data.hora_fin)
@@ -1430,7 +1247,7 @@ async def crear_reserva_manual(
         hora_fin=hora_fin_t,
         precio_total=precio_total,
         estado=EstadoReservaEnum.confirmed,   # confirmada de inmediato
-        tipo_doc=TipoDocEnum.factura if es_factura else TipoDocEnum.boleta,
+        tipo_doc=data.tipo_doc,               # ya es TipoDocEnum desde el schema
         ruc_factura=data.ruc_factura.strip() if es_factura and data.ruc_factura else None,
         razon_social=data.razon_social.strip() if es_factura and data.razon_social else None,
         notas=notas_data
@@ -1443,7 +1260,7 @@ async def crear_reserva_manual(
         reserva_id=nueva_reserva.id,
         cliente_id=admin_uuid,
         monto=precio_total,
-        metodo=MetodoPagoEnum(data.metodo_pago),
+        metodo=data.metodo_pago,              # ya es MetodoPagoEnum desde el schema
         estado=EstadoPagoEnum.verificado,     # pagado en el momento
         voucher_url=None,
         comprobante_ext=None,
@@ -1466,27 +1283,6 @@ async def crear_reserva_manual(
 # ══════════════════════════════════════════════
 # BLOQUEOS DE HORARIO
 # ══════════════════════════════════════════════
-
-class BloqueoCreateRequest(BaseModel):
-    cancha_id: uuid.UUID
-    fecha: date
-    hora_inicio: str   # "HH:MM"
-    hora_fin: str      # "HH:MM"
-    motivo: Optional[str] = None
-
-
-class BloqueoResponse(BaseModel):
-    id: uuid.UUID
-    cancha_id: uuid.UUID
-    cancha_nombre: Optional[str] = None
-    fecha: date
-    hora_inicio: str
-    hora_fin: str
-    motivo: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
 
 @router.get("/bloqueos", response_model=List[BloqueoResponse])
 async def admin_get_bloqueos(

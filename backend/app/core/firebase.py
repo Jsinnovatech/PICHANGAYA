@@ -2,6 +2,9 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 _firebase_ok = False
 
@@ -18,10 +21,10 @@ def _init_firebase():
             cred = credentials.Certificate(json.loads(service_account_json))
             firebase_admin.initialize_app(cred)
             _firebase_ok = True
-            print("✅ Firebase inicializado desde variable de entorno")
+            logger.info("Firebase inicializado desde variable de entorno")
             return
         except Exception as e:
-            print(f"❌ Error inicializando Firebase desde env var: {e}")
+            logger.error("Error inicializando Firebase desde env var", exc_info=True)
 
     # Opción 2: archivo local
     service_account_path = os.path.join(
@@ -33,18 +36,18 @@ def _init_firebase():
             cred = credentials.Certificate(service_account_path)
             firebase_admin.initialize_app(cred)
             _firebase_ok = True
-            print(f"✅ Firebase inicializado desde archivo: {service_account_path}")
+            logger.info("Firebase inicializado desde archivo local")
         except Exception as e:
-            print(f"❌ Error inicializando Firebase desde archivo: {e}")
+            logger.error("Error inicializando Firebase desde archivo", exc_info=True)
     else:
-        print("⚠️  Firebase no configurado — notificaciones push deshabilitadas")
+        logger.warning("Firebase no configurado — notificaciones push deshabilitadas")
 
 _init_firebase()
 
 
 def enviar_notificacion(token: str, titulo: str, cuerpo: str, data: dict = None):
     if not _firebase_ok:
-        print("⚠️  Firebase no inicializado, notificación omitida")
+        logger.warning("Firebase no inicializado, notificación omitida")
         return False
     try:
         message = messaging.Message(
@@ -56,8 +59,8 @@ def enviar_notificacion(token: str, titulo: str, cuerpo: str, data: dict = None)
             token=token,
         )
         response = messaging.send(message)
-        print(f"✅ Notificación enviada: {response}")
+        logger.info("Notificacion push enviada correctamente")
         return True
     except Exception as e:
-        print(f"❌ Error enviando notificación: {e}")
+        logger.error("Error enviando notificacion push", exc_info=True)
         return False

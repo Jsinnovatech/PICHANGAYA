@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+firebase-service-account.json
+*-service-account.json
+*.pem
+*.key
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.pyo
+*.egg-info/
+dist/
+.pytest_cache/

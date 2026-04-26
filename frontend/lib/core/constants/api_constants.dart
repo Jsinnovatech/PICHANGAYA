@@ -1,22 +1,33 @@
-// ignore: unused_import
-import 'package:flutter/foundation.dart'; // kIsWeb — usado en modo desarrollo
+import 'package:flutter/foundation.dart';
 
 class ApiConstants {
+  // Ambiente controlado mediante dart-define: --dart-define=API_ENV=development
+  // Por defecto apunta a producción.
+  static const String _env = String.fromEnvironment('API_ENV', defaultValue: 'production');
+
   static const String _railwayUrl = 'https://pichangaya-production-0eb7.up.railway.app';
 
-  // ── PRODUCCIÓN ───────────────────────────────────────────────
-  static String get baseUrl => '$_railwayUrl/api/v1';
-  static String get wsTimers => 'wss://pichangaya-production-0eb7.up.railway.app/ws/timers';
+  // ── URL base según ambiente ──────────────────────────────────
+  // development + web  → localhost:8000  (navegador Chrome/Edge en la misma PC)
+  // development + móvil → 10.0.2.2:8000 (Android emulator apunta al host)
+  // production          → Railway
+  static String get baseUrl {
+    if (_env == 'development') {
+      return kIsWeb
+          ? 'http://localhost:8000/api/v1'
+          : 'http://10.0.2.2:8000/api/v1';
+    }
+    return '$_railwayUrl/api/v1';
+  }
 
-  // ── DESARROLLO LOCAL (descomentar y comentar las de arriba) ──
-  // static String get baseUrl {
-  //   if (kIsWeb) return 'http://localhost:8000/api/v1';
-  //   return 'http://10.0.2.2:8000/api/v1';
-  // }
-  // static String get wsTimers {
-  //   if (kIsWeb) return 'ws://localhost:8000/ws/timers';
-  //   return 'ws://10.0.2.2:8000/ws/timers';
-  // }
+  static String get wsBaseUrl {
+    if (_env == 'development') {
+      return kIsWeb ? 'ws://localhost:8000' : 'ws://10.0.2.2:8000';
+    }
+    return 'wss://pichangaya-production-0eb7.up.railway.app';
+  }
+
+  static String get wsTimers => '$wsBaseUrl/ws/timers';
 
   // Auth
   static const String register = '/auth/register';

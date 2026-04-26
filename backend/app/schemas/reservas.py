@@ -1,15 +1,34 @@
-from pydantic import BaseModel
-# BaseModel → clase base de Pydantic para validar datos
-
-from typing import Optional
-# Optional → campo que puede ser None
-
+import re
 import uuid
-# Para el tipo UUID de los IDs
+from datetime import date as date_type
+from typing import Optional
 
-from datetime import date
-# date → tipo fecha YYYY-MM-DD
+from pydantic import BaseModel, field_validator, model_validator
 
+from app.models.pago import MetodoPagoEnum
+from app.models.reserva import TipoDocEnum
+
+
+# ─────────────────────────────────────────────────────────────
+# Utilidad: validación de RUC peruano con dígito verificador
+# ─────────────────────────────────────────────────────────────
+
+def _validar_ruc_peruano(ruc: str) -> bool:
+    """Valida RUC peruano de 11 dígitos usando el algoritmo del dígito verificador."""
+    if not ruc or not ruc.isdigit() or len(ruc) != 11:
+        return False
+    factores = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+    suma = sum(int(ruc[i]) * factores[i] for i in range(10))
+    residuo = suma % 11
+    digito = 11 - residuo
+    if digito >= 10:
+        digito -= 10
+    return digito == int(ruc[10])
+
+
+# ─────────────────────────────────────────────────────────────
+# Schema de creación de reserva
+# ─────────────────────────────────────────────────────────────
 
 class ReservaCreateRequest(BaseModel):
     # Datos que Flutter envía al crear una reserva
@@ -18,7 +37,7 @@ class ReservaCreateRequest(BaseModel):
     cancha_id: uuid.UUID
     # ID de la cancha seleccionada
 
-    fecha: date
+    fecha: date_type
     # Fecha de la reserva — ej: "2026-03-24"
     # Pydantic convierte automáticamente el string al tipo date
 
@@ -28,18 +47,63 @@ class ReservaCreateRequest(BaseModel):
     hora_fin: str
     # Hora de fin del slot — ej: "10:00"
 
-    metodo_pago: str
-    # "yape" | "plin" | "transferencia" | "efectivo"
+    metodo_pago: MetodoPagoEnum
+    # Enum: yape | plin | transferencia | efectivo | tarjeta
 
-    tipo_doc: Optional[str] = "boleta"
-    # "boleta" | "factura" — por defecto boleta
+    tipo_doc: Optional[TipoDocEnum] = TipoDocEnum.boleta
+    # Enum: boleta | factura — por defecto boleta
 
     ruc_factura: Optional[str] = None
-    # RUC de la empresa — obligatorio si tipo_doc = "factura" (11 dígitos)
+    # RUC de la empresa — obligatorio si tipo_doc = factura (11 dígitos + dígito verificador)
 
     razon_social: Optional[str] = None
-    # Razón social de la empresa — obligatorio si tipo_doc = "factura"
+    # Razón social de la empresa — obligatorio si tipo_doc = factura
 
+    # ── Validadores de hora ────────────────────────────────────
+
+    @field_validator("hora_inicio", "hora_fin")
+    @classmethod
+    def validar_formato_hora(cls, v: str) -> str:
+        if not re.match(r"^\d{2}:\d{2}$", v):
+            raise ValueError("Formato de hora debe ser HH:MM")
+        h, m = map(int, v.split(":"))
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError("Hora inválida")
+        return v
+
+    # ── Validador de fecha ────────────────────────────────────
+
+    @field_validator("fecha")
+    @classmethod
+    def fecha_no_pasada(cls, v) -> date_type:
+        if v < date_type.today():
+            raise ValueError("No se pueden reservar fechas pasadas")
+        return v
+
+    # ── Validador de RUC con dígito verificador ───────────────
+
+    @field_validator("ruc_factura")
+    @classmethod
+    def validar_ruc(cls, v):
+        if v is not None and not _validar_ruc_peruano(v):
+            raise ValueError("RUC inválido — verifica el dígito verificador")
+        return v
+
+    # ── Validación condicional factura ────────────────────────
+
+    @model_validator(mode="after")
+    def validar_campos_factura(self):
+        if self.tipo_doc == TipoDocEnum.factura:
+            if not self.ruc_factura:
+                raise ValueError("RUC requerido para facturas")
+            if not self.razon_social or not self.razon_social.strip():
+                raise ValueError("Razón social requerida para facturas")
+        return self
+
+
+# ─────────────────────────────────────────────────────────────
+# Schema de respuesta al crear reserva
+# ─────────────────────────────────────────────────────────────
 
 class ReservaResponse(BaseModel):
     # Datos que devuelve la API al crear una reserva exitosa
@@ -58,7 +122,7 @@ class ReservaResponse(BaseModel):
     local_nombre: Optional[str] = None
     # Nombre del local — ej: "Complejo Deportivo El Golazo"
 
-    fecha: date
+    fecha: date_type
     # Fecha de la reserva
 
     hora_inicio: str
@@ -83,6 +147,10 @@ class ReservaResponse(BaseModel):
         from_attributes = True
 
 
+# ─────────────────────────────────────────────────────────────
+# Schema del historial del cliente
+# ─────────────────────────────────────────────────────────────
+
 class MiReservaResponse(BaseModel):
     # Para el historial del cliente — tab "Mis Reservas" del prototipo HTML
     # Muestra todas las reservas del cliente logueado
@@ -91,7 +159,7 @@ class MiReservaResponse(BaseModel):
     codigo: str
     cancha_nombre: Optional[str] = None
     local_nombre: Optional[str] = None
-    fecha: date
+    fecha: date_type
     hora_inicio: str
     hora_fin: str
     precio_total: float

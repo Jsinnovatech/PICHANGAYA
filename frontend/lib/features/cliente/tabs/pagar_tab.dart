@@ -48,7 +48,8 @@ class _PagarTabState extends State<PagarTab> {
         _page = 0;
       });
     } catch (e) {
-      setState(() { _error = 'Error al cargar pagos'; _loading = false; });
+      debugPrint('[PagarTab] Error al cargar pagos: $e');
+      setState(() { _error = 'Ocurrió un error. Intenta de nuevo.'; _loading = false; });
     }
   }
 
@@ -86,7 +87,8 @@ class _PagarTabState extends State<PagarTab> {
       });
       _cargarPagos();
     } catch (e) {
-      setState(() { _errorSubida = 'Error al subir el voucher.'; _subiendo = false; });
+      debugPrint('[PagarTab] Error al subir voucher: $e');
+      setState(() { _errorSubida = 'Ocurrió un error. Intenta de nuevo.'; _subiendo = false; });
     }
   }
 

@@ -39,7 +39,7 @@ flutter run
 
 
 
-claude --resume 293a38d8-0d91-4a95-8bbe-4e5669460d66
+claude --resume c906f182-eadf-4e3d-bcab-0566a6091891
 
 
 para levantar en ngrok
@@ -83,3 +83,15 @@ const app = initializeApp(firebaseConfig);
  ///// EL VAPID KEY PARA EL PUSH WEB DE NOTIFICACIONES EN FIREBASE
 
 BO-zL00Gw34QLvk5Zh45wQYdjqLFpusN0l2Z3mUX_to-wIUvhGYW6rY9kgEzWy3sdTKKz5zs8T8dR5gd8GxPrWI
+
+
+
+cd E:\PICHANGAYA\frontend
+  flutter clean                                                                                                                                                           flutter pub get
+  flutter build apk --release --split-per-abi 
+
+
+PAR SIMPLIFICAR CODIGO
+create un skill para el code review 
+
+

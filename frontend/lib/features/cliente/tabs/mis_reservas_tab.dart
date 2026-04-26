@@ -45,8 +45,9 @@ class _MisReservasTabState extends State<MisReservasTab> {
         _loading = false;
       });
     } catch (e) {
+      debugPrint('[MisReservasTab] Error al cargar: $e');
       setState(() {
-        _error = 'Error al cargar reservas';
+        _error = 'Ocurrió un error. Intenta de nuevo.';
         _loading = false;
       });
     }
