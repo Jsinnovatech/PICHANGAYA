@@ -16,6 +16,7 @@ class _AdminHorariosPageState extends State<AdminHorariosPage> {
   List<Map<String, dynamic>> _canchas = [];
   Map<String, dynamic>? _canchaSeleccionada;
   bool _loadingCanchas = true;
+  String? _errorCanchas;
 
   // Horarios de la cancha seleccionada
   List<Map<String, dynamic>> _horarios = [];
@@ -38,7 +39,7 @@ class _AdminHorariosPageState extends State<AdminHorariosPage> {
   }
 
   Future<void> _cargarCanchas() async {
-    setState(() { _loadingCanchas = true; });
+    setState(() { _loadingCanchas = true; _errorCanchas = null; });
     try {
       final res = await ApiClient().dio.get(ApiConstants.adminCanchas);
       final lista = List<Map<String, dynamic>>.from(res.data as List);
@@ -51,7 +52,10 @@ class _AdminHorariosPageState extends State<AdminHorariosPage> {
         }
       });
     } catch (_) {
-      setState(() { _loadingCanchas = false; });
+      setState(() {
+        _errorCanchas = 'Error al cargar canchas';
+        _loadingCanchas = false;
+      });
     }
   }
 
@@ -129,6 +133,13 @@ class _AdminHorariosPageState extends State<AdminHorariosPage> {
   Widget build(BuildContext context) {
     if (_loadingCanchas) {
       return const Center(child: CircularProgressIndicator(color: AppColors.verde));
+    }
+    if (_errorCanchas != null) {
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(_errorCanchas!, style: const TextStyle(color: AppColors.rojo)),
+        const SizedBox(height: 12),
+        ElevatedButton(onPressed: _cargarCanchas, child: const Text('Reintentar')),
+      ]));
     }
     if (_canchas.isEmpty) {
       return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [

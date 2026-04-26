@@ -387,8 +387,8 @@ class _FormLocalState extends State<_FormLocal> {
     final data = {
       'nombre'     : _nombre.text.trim(),
       'direccion'  : _direccion.text.trim(),
-      if (_lat.text.trim().isNotEmpty) 'lat': double.tryParse(_lat.text.trim()),
-      if (_lng.text.trim().isNotEmpty) 'lng': double.tryParse(_lng.text.trim()),
+      'lat'        : double.tryParse(_lat.text.trim()) ?? 0.0,
+      'lng'        : double.tryParse(_lng.text.trim()) ?? 0.0,
       if (_telefono.text.trim().isNotEmpty)    'telefono':    _telefono.text.trim(),
       if (_descripcion.text.trim().isNotEmpty) 'descripcion': _descripcion.text.trim(),
     };
@@ -441,9 +441,9 @@ class _FormLocalState extends State<_FormLocal> {
             _campo(_direccion, 'Dirección *', required: true),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: _campo(_lat, 'Latitud', tipo: TextInputType.numberWithOptions(decimal: true, signed: true))),
+              Expanded(child: _campo(_lat, 'Latitud *', required: true, tipo: TextInputType.numberWithOptions(decimal: true, signed: true))),
               const SizedBox(width: 12),
-              Expanded(child: _campo(_lng, 'Longitud', tipo: TextInputType.numberWithOptions(decimal: true, signed: true))),
+              Expanded(child: _campo(_lng, 'Longitud *', required: true, tipo: TextInputType.numberWithOptions(decimal: true, signed: true))),
             ]),
             const SizedBox(height: 12),
             _campo(_telefono, 'Teléfono (opcional)', tipo: TextInputType.phone),
