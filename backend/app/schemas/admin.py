@@ -51,6 +51,9 @@ class ReservaAdminResponse(BaseModel):
     voucher_url: Optional[str] = None
     pago_estado: Optional[str] = None
     pago_id: Optional[uuid.UUID] = None
+    # Campos de reserva manual (walk-in)
+    es_manual: bool = False
+    dni_cliente: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -189,6 +192,8 @@ class CanchaDisponibilidadResponse(BaseModel):
     cancha_nombre: str
     tipo_piso: Optional[str] = None
     precio_hora: float
+    precio_dia: Optional[float] = None
+    precio_noche: Optional[float] = None
     slots: List[SlotAdminResponse]
 
 
@@ -310,9 +315,30 @@ class FacturacionItemResponse(BaseModel):
     comprobante_numero: Optional[int] = None
     pdf_url: Optional[str] = None
     fecha_pago: Optional[str] = None
+    # Campos de reserva manual (walk-in)
+    es_manual: bool = False
+    dni_cliente: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+# ─────────────────────────────────────────────────────────────
+# Medios de Pago — por admin
+# ─────────────────────────────────────────────────────────────
+
+class MediosPagoResponse(BaseModel):
+    yape_numero: Optional[str] = None
+    qr_imagen_base64: Optional[str] = None
+    cuenta_bcp: Optional[str] = None
+    cuenta_bbva: Optional[str] = None
+
+
+class MediosPagoRequest(BaseModel):
+    yape_numero: Optional[str] = None
+    qr_imagen_base64: Optional[str] = None
+    cuenta_bcp: Optional[str] = None
+    cuenta_bbva: Optional[str] = None
 
 
 # ─────────────────────────────────────────────────────────────

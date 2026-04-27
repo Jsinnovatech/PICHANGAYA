@@ -196,6 +196,8 @@ class _State extends State<AdminReservasPage> {
     final estado        = r['estado'] ?? '';
     final puedeConfirmar = estado == 'pending';
     final puedeCancelar  = estado == 'pending' || estado == 'confirmed';
+    final esManual       = r['es_manual'] == true;
+    final dni            = r['dni_cliente'] as String?;
 
     return GestureDetector(
       onTap: () => _mostrarDetalle(r),
@@ -210,12 +212,27 @@ class _State extends State<AdminReservasPage> {
           Row(children: [
             Text(r['codigo'] ?? '—',
                 style: const TextStyle(fontSize: 12, color: AppColors.texto2, fontWeight: FontWeight.w600)),
+            if (esManual) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text('🖊️ Manual',
+                    style: TextStyle(fontSize: 9, color: Colors.orange, fontWeight: FontWeight.w700)),
+              ),
+            ],
             const Spacer(),
             _badgeEstado(estado),
           ]),
           const SizedBox(height: 8),
           Text(r['cliente_nombre'] ?? '—',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+          if (dni != null)
+            Text('DNI: $dni',
+                style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
           Text('${r['cancha_nombre'] ?? ''} · ${r['local_nombre'] ?? ''}',
               style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
           const SizedBox(height: 8),
@@ -366,8 +383,13 @@ class _DetalleReservaSheet extends StatelessWidget {
               border: Border.all(color: AppColors.borde)),
           child: Column(children: [
             _fila('Código',      r['codigo'] ?? '—'),
+            if (r['es_manual'] == true)
+              _fila('Tipo', '🖊️ Reserva Manual (Walk-in)'),
             _fila('Cliente',     r['cliente_nombre'] ?? '—'),
-            _fila('Celular',     '+51 ${r['cliente_celular'] ?? ''}'),
+            if (r['dni_cliente'] != null)
+              _fila('DNI',       r['dni_cliente'].toString()),
+            if (r['es_manual'] != true)
+              _fila('Celular',   '+51 ${r['cliente_celular'] ?? ''}'),
             _fila('Cancha',      r['cancha_nombre'] ?? '—'),
             _fila('Local',       r['local_nombre'] ?? '—'),
             _fila('Fecha',       r['fecha'] ?? '—'),

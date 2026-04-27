@@ -68,9 +68,19 @@ class _CanchasTabState extends State<CanchasTab> {
     return '${(total ~/ 60).toString().padLeft(2, '0')}:${(total % 60).toString().padLeft(2, '0')}';
   }
 
-  double _precioParaDur(double precioHora, [double? horas]) {
+  /// Precio del slot seleccionado × horas. Fallback a precioHora de la cancha.
+  double _precioSlot([double? horas]) {
     final h = horas ?? _duracionHoras;
-    return precioHora * h;
+    final precioBase = (_slotSeleccionado?['precio'] as num?)?.toDouble()
+        ?? _canchaSeleccionada?.precioHora ?? 0;
+    return precioBase * h;
+  }
+
+  /// Suma todos los precios de los slots del día (para "Todo el día").
+  double get _precioTodoDia {
+    if (_horarios.isEmpty) return (_canchaSeleccionada?.precioHora ?? 0) * 16;
+    return _horarios.fold(0.0, (sum, h) =>
+        sum + ((h['precio'] as num?)?.toDouble() ?? _canchaSeleccionada?.precioHora ?? 0));
   }
 
   // Slot seleccionable para la duración activa
@@ -268,11 +278,30 @@ class _CanchasTabState extends State<CanchasTab> {
             _chip('${cancha.capacidad} jugadores', AppColors.texto2),
           ]),
         ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('S/.${cancha.precioHora.toStringAsFixed(0)}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.verde)),
-          const Text('/hora', style: TextStyle(fontSize: 10, color: AppColors.texto2)),
-        ]),
+        if (cancha.precioDia != null && cancha.precioNoche != null)
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const Text('☀️', style: TextStyle(fontSize: 11)),
+              const SizedBox(width: 2),
+              Text('S/.${cancha.precioDia!.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
+                      color: Color(0xFFF59E0B))),
+            ]),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const Text('🌙', style: TextStyle(fontSize: 11)),
+              const SizedBox(width: 2),
+              Text('S/.${cancha.precioNoche!.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
+                      color: Color(0xFF8B5CF6))),
+            ]),
+            const Text('/hora', style: TextStyle(fontSize: 9, color: AppColors.texto2)),
+          ])
+        else
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('S/.${cancha.precioHora.toStringAsFixed(0)}',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.verde)),
+            const Text('/hora', style: TextStyle(fontSize: 10, color: AppColors.texto2)),
+          ]),
         const SizedBox(width: 8),
         Icon(sel ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
             color: AppColors.texto2, size: 20),
@@ -387,10 +416,20 @@ class _CanchasTabState extends State<CanchasTab> {
               style: const TextStyle(color: Colors.white, fontSize: 16,
                   fontWeight: FontWeight.w700)),
           const Spacer(),
-          Text('S/.${cancha.precioHora.toStringAsFixed(0)}',
-              style: const TextStyle(color: AppColors.verde, fontSize: 16,
-                  fontWeight: FontWeight.w800)),
-          const Text('/h', style: TextStyle(color: AppColors.texto2, fontSize: 11)),
+          if (cancha.precioDia != null && cancha.precioNoche != null) ...[
+            Text('☀️S/.${cancha.precioDia!.toStringAsFixed(0)}',
+                style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(width: 6),
+            Text('🌙S/.${cancha.precioNoche!.toStringAsFixed(0)}',
+                style: const TextStyle(color: Color(0xFF8B5CF6), fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ] else ...[
+            Text('S/.${cancha.precioHora.toStringAsFixed(0)}',
+                style: const TextStyle(color: AppColors.verde, fontSize: 16,
+                    fontWeight: FontWeight.w800)),
+            const Text('/h', style: TextStyle(color: AppColors.texto2, fontSize: 11)),
+          ],
         ]),
       ),
     ),
@@ -409,7 +448,17 @@ class _CanchasTabState extends State<CanchasTab> {
       // Chips 1h / 1½h / 2h
       Row(children: opciones.map((o) {
         final sel = _duracionHoras == o.$1 && !_esTodoDia;
-        final precio = _precioParaDur(cancha.precioHora, o.$1);
+        // Precio según slot seleccionado; si no hay slot, usa precio mínimo (día)
+        final precioBase = (_slotSeleccionado?['precio'] as num?)?.toDouble()
+            ?? cancha.precioDia
+            ?? cancha.precioHora;
+        final precio = precioBase * o.$1;
+        // Para mostrar rango día/noche cuando no hay slot elegido
+        final tieneRango = _slotSeleccionado == null
+            && cancha.precioDia != null
+            && cancha.precioNoche != null
+            && cancha.precioDia != cancha.precioNoche;
+        final precioNocheChip = tieneRango ? cancha.precioNoche! * o.$1 : null;
         return Expanded(child: GestureDetector(
           onTap: () => setState(() {
             _duracionHoras    = o.$1;
@@ -428,13 +477,27 @@ class _CanchasTabState extends State<CanchasTab> {
             child: Column(children: [
               Text(o.$2, style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.w700,
-                color: sel ? AppColors.verde : Colors.white)),
+                color: sel ? const Color(0xFF34D399) : Colors.white)),
               const SizedBox(height: 2),
               Text(o.$3, style: const TextStyle(fontSize: 9, color: AppColors.texto2)),
               const SizedBox(height: 3),
-              Text('S/.${precio.toStringAsFixed(0)}', style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w600,
-                color: sel ? AppColors.verde : AppColors.texto2)),
+              if (tieneRango)
+                RichText(text: TextSpan(children: [
+                  TextSpan(
+                    text: 'S/.${precio.toStringAsFixed(0)}',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                        color: sel ? const Color(0xFF34D399) : const Color(0xFFF59E0B)),
+                  ),
+                  TextSpan(
+                    text: '-${precioNocheChip!.toStringAsFixed(0)}',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                        color: sel ? const Color(0xFF34D399) : const Color(0xFF8B5CF6)),
+                  ),
+                ]))
+              else
+                Text('S/.${precio.toStringAsFixed(0)}', style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600,
+                  color: sel ? const Color(0xFF34D399) : AppColors.texto2)),
             ]),
           ),
         ));
@@ -493,7 +556,7 @@ class _CanchasTabState extends State<CanchasTab> {
                 style: const TextStyle(fontSize: 10, color: AppColors.texto2)),
             ])),
             Text(
-              'S/.${_precioParaDur(cancha.precioHora, 16.0).toStringAsFixed(0)}',
+              'S/.${_precioTodoDia.toStringAsFixed(0)}',
               style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.w800,
                 color: _esTodoDia ? AppColors.verde : AppColors.texto2)),
@@ -620,18 +683,18 @@ class _CanchasTabState extends State<CanchasTab> {
                   color: ocupado
                       ? AppColors.negro2
                       : sel
-                          ? AppColors.verde
+                          ? const Color(0xFF059669)
                           : disponible
-                              ? AppColors.verde.withOpacity(0.08)
+                              ? const Color(0xFF059669).withOpacity(0.08)
                               : AppColors.negro2.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: ocupado
                         ? AppColors.borde.withOpacity(0.4)
                         : sel
-                            ? AppColors.verde
+                            ? const Color(0xFF34D399)
                             : disponible
-                                ? AppColors.verde.withOpacity(0.35)
+                                ? const Color(0xFF059669).withOpacity(0.4)
                                 : AppColors.borde.withOpacity(0.3),
                     width: sel ? 1.5 : 1,
                   ),
@@ -642,9 +705,9 @@ class _CanchasTabState extends State<CanchasTab> {
                     color: ocupado
                         ? AppColors.texto2
                         : sel
-                            ? AppColors.negro
+                            ? Colors.white
                             : disponible
-                                ? AppColors.verde
+                                ? const Color(0xFF34D399)
                                 : AppColors.texto2.withOpacity(0.5),
                     decoration: ocupado ? TextDecoration.lineThrough : null,
                   )),
@@ -664,10 +727,22 @@ class _CanchasTabState extends State<CanchasTab> {
                       color: ocupado
                           ? AppColors.texto2.withOpacity(0.5)
                           : sel
-                              ? AppColors.negro.withOpacity(0.7)
+                              ? Colors.white70
                               : AppColors.texto2,
                     ),
                   ),
+                  if (!ocupado) ...[
+                    const SizedBox(height: 1),
+                    Text(
+                      'S/.${((h['precio'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}/h',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: sel
+                            ? const Color(0xFF34D399)
+                            : AppColors.texto2.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
                 ]),
               ),
             );
@@ -684,7 +759,7 @@ class _CanchasTabState extends State<CanchasTab> {
 
     final horaInicio = _slotSeleccionado!['hora_inicio']?.toString().substring(0, 5) ?? '';
     final horaFin    = _calcHoraFin(horaInicio);
-    final precio     = _precioParaDur(cancha.precioHora);
+    final precio     = _precioSlot();
     final durLabel   = _esTodoDia
         ? '16 horas (todo el día)'
         : _duracionHoras == 1.5
@@ -730,7 +805,10 @@ class _CanchasTabState extends State<CanchasTab> {
     final horaInicio = _slotSeleccionado!['hora_inicio']?.toString().substring(0, 5) ?? '';
     final horaFin    = _calcHoraFin(horaInicio);
     final fechaStr   = DateFormat('d MMM', 'es').format(_fechaSeleccionada);
-    final precio     = _precioParaDur(_canchaSeleccionada!.precioHora);
+    final precio     = _precioSlot();
+    final esNoche    = (_slotSeleccionado?['precio'] as num?)?.toDouble() == _canchaSeleccionada?.precioNoche
+        && _canchaSeleccionada?.precioNoche != null;
+    final accentColor = esNoche ? const Color(0xFF818CF8) : const Color(0xFF34D399);
 
     return Positioned(
       left: 12, right: 12, bottom: 16,
@@ -739,32 +817,72 @@ class _CanchasTabState extends State<CanchasTab> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: AppColors.verde,
-            borderRadius: BorderRadius.circular(12),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
             boxShadow: [
               BoxShadow(
-                  color: AppColors.verde.withOpacity(0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4))
+                color: Colors.black.withOpacity(0.55),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
             ],
           ),
           child: Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${_canchaSeleccionada!.nombre} · $horaInicio – $horaFin',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                      color: AppColors.negro)),
-              Text('$fechaStr · ${_esTodoDia ? 'Todo el día' : '${_duracionHoras == 1.5 ? "1h 30m" : "${_duracionHoras.toInt()}h"}'}',
-                  style: TextStyle(fontSize: 12, color: AppColors.negro.withOpacity(0.7))),
-            ])),
+            // Icono de cancha
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              width: 40, height: 40,
               decoration: BoxDecoration(
-                  color: AppColors.negro, borderRadius: BorderRadius.circular(8)),
-              child: Column(children: [
-                const Text('Reservar', style: TextStyle(fontSize: 11,
-                    fontWeight: FontWeight.w700, color: AppColors.verde)),
-                Text('S/.${precio.toStringAsFixed(0)}', style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.verde)),
+                color: accentColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: accentColor.withOpacity(0.3)),
+              ),
+              child: const Icon(Icons.sports_soccer, color: Colors.white70, size: 20),
+            ),
+            const SizedBox(width: 12),
+            // Info central
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                '${_canchaSeleccionada!.nombre}  ·  $horaInicio – $horaFin',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                    color: Colors.white),
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 3),
+              Row(children: [
+                Icon(Icons.calendar_today_outlined, size: 11, color: Colors.white38),
+                const SizedBox(width: 4),
+                Text(
+                  '$fechaStr  ·  ${_esTodoDia ? 'Todo el día' : _duracionHoras == 1.5 ? '1h 30m' : '${_duracionHoras.toInt()}h'}',
+                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+              ]),
+            ])),
+            const SizedBox(width: 10),
+            // Botón precio
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: accentColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: accentColor.withOpacity(0.5), width: 1.5),
+              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(
+                  'Reservar',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                      color: accentColor, letterSpacing: 0.5),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'S/.${precio.toStringAsFixed(0)}',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+                      color: accentColor),
+                ),
               ]),
             ),
           ]),
@@ -797,10 +915,11 @@ class _CanchasTabState extends State<CanchasTab> {
       canchaId:        _canchaSeleccionada!.id,
       canchaName:      _canchaSeleccionada!.nombre,
       localName:       widget.localFiltro!.nombre,
+      localId:         widget.localFiltro!.id,
       fecha:           _fechaSeleccionada,
       horaInicio:      horaInicio,
       horaFin:         horaFin,
-      precioTotal:     _precioParaDur(_canchaSeleccionada!.precioHora),
+      precioTotal:     _precioSlot(),
       nombreInicial:   nombre,
       telefonoInicial: telefono,
       dniInicial:      dni,

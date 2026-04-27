@@ -84,7 +84,7 @@ class _State extends State<AdminReservaManualPage> {
           const Icon(Icons.calendar_today, color: AppColors.verde, size: 18),
           const SizedBox(width: 8),
           Text(
-            DateFormat('dd/MM/yyyy').format(_fecha),
+            DateFormat('EEEE dd/MM/yyyy', 'es').format(_fecha),
             style: const TextStyle(color: AppColors.texto, fontWeight: FontWeight.w600),
           ),
           const Spacer(),
@@ -126,9 +126,11 @@ class _State extends State<AdminReservaManualPage> {
   }
 
   Widget _buildCanchaCard(Map<String, dynamic> cancha) {
-    final slots = (cancha['slots'] as List?) ?? [];
-    final nombre = cancha['cancha_nombre'] ?? '';
-    final precio = cancha['precio_hora']?.toDouble() ?? 0.0;
+    final slots     = (cancha['slots'] as List?) ?? [];
+    final nombre    = cancha['cancha_nombre'] ?? '';
+    final precioDia   = (cancha['precio_dia']   as num?)?.toDouble();
+    final precioNoche = (cancha['precio_noche'] as num?)?.toDouble();
+    final precioHora  = (cancha['precio_hora']  as num?)?.toDouble() ?? 0.0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -144,12 +146,26 @@ class _State extends State<AdminReservaManualPage> {
           child: Row(children: [
             const Icon(Icons.sports_soccer, color: AppColors.verde, size: 20),
             const SizedBox(width: 8),
-            Text(nombre, style: const TextStyle(
-              color: AppColors.texto, fontWeight: FontWeight.w700, fontSize: 15,
-            )),
-            const Spacer(),
-            Text('S/.${precio.toStringAsFixed(0)}/h',
-                style: const TextStyle(color: AppColors.verde, fontWeight: FontWeight.w600)),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(nombre, style: const TextStyle(
+                  color: AppColors.texto, fontWeight: FontWeight.w700, fontSize: 15,
+                )),
+                const SizedBox(height: 2),
+                // Precios día/noche
+                if (precioDia != null && precioNoche != null)
+                  Row(children: [
+                    Text('☀️ S/.${precioDia.toStringAsFixed(0)}/h',
+                        style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 10),
+                    Text('🌙 S/.${precioNoche.toStringAsFixed(0)}/h',
+                        style: const TextStyle(color: Color(0xFF818CF8), fontSize: 12, fontWeight: FontWeight.w600)),
+                  ])
+                else
+                  Text('S/.${precioHora.toStringAsFixed(0)}/h',
+                      style: const TextStyle(color: AppColors.verde, fontSize: 12)),
+              ]),
+            ),
           ]),
         ),
         const Divider(color: AppColors.borde, height: 1),
@@ -165,6 +181,7 @@ class _State extends State<AdminReservaManualPage> {
                 runSpacing: 8,
                 children: slots.map<Widget>((slot) {
                   final disponible = slot['disponible'] == true;
+                  final precio = (slot['precio'] as num?)?.toDouble() ?? precioHora;
                   return GestureDetector(
                     onTap: disponible ? () => _abrirModal(cancha, slot) : null,
                     child: Container(
@@ -186,7 +203,7 @@ class _State extends State<AdminReservaManualPage> {
                           ),
                         ),
                         Text(
-                          disponible ? 'Libre' : 'Ocupado',
+                          disponible ? 'S/.${precio.toStringAsFixed(0)}/h' : 'Ocupado',
                           style: TextStyle(
                             color: disponible ? AppColors.texto2 : Colors.red.shade300,
                             fontSize: 10,
@@ -229,6 +246,7 @@ class _ModalState extends State<_ModalReservaManual> {
 
   String _metodo  = 'efectivo';
   String _tipoDoc = 'boleta';
+  double _duracion = 1.0;   // 1h, 1.5h, 2h
   bool _loading   = false;
   String? _error;
 
@@ -238,11 +256,38 @@ class _ModalState extends State<_ModalReservaManual> {
     {'value': 'efectivo', 'label': 'Efectivo'},
   ];
 
+  static const _duraciones = [
+    {'value': 1.0,  'label': '1h'},
+    {'value': 1.5,  'label': '1½h'},
+    {'value': 2.0,  'label': '2h'},
+  ];
+
   @override
   void dispose() {
     _nombreCtrl.dispose(); _dniCtrl.dispose();
     _rucCtrl.dispose(); _rsCtrl.dispose();
     super.dispose();
+  }
+
+  /// Precio del slot seleccionado
+  double get _precioSlot =>
+      (widget.slot['precio'] as num?)?.toDouble()
+      ?? (widget.cancha['precio_hora'] as num?)?.toDouble()
+      ?? 0.0;
+
+  /// Total = precioSlot * duración
+  double get _precioTotal => _precioSlot * _duracion;
+
+  /// hora_fin calculada según duración
+  String get _horaFin {
+    final inicio = widget.slot['hora_inicio'] as String;
+    final parts  = inicio.split(':');
+    final h = int.parse(parts[0]);
+    final m = int.parse(parts[1]);
+    final totalMin = h * 60 + m + (_duracion * 60).round();
+    final fh = (totalMin ~/ 60) % 24;
+    final fm = totalMin % 60;
+    return '${fh.toString().padLeft(2, '0')}:${fm.toString().padLeft(2, '0')}';
   }
 
   Future<void> _confirmar() async {
@@ -268,7 +313,7 @@ class _ModalState extends State<_ModalReservaManual> {
         'cancha_id':       widget.cancha['cancha_id'],
         'fecha':           DateFormat('yyyy-MM-dd').format(widget.fecha),
         'hora_inicio':     widget.slot['hora_inicio'],
-        'hora_fin':        widget.slot['hora_fin'],
+        'hora_fin':        _horaFin,
         'nombre_cliente':  nombre,
         'dni_cliente':     dni,
         'metodo_pago':     _metodo,
@@ -298,7 +343,9 @@ class _ModalState extends State<_ModalReservaManual> {
 
   @override
   Widget build(BuildContext context) {
-    final precio = widget.slot['precio']?.toDouble() ?? 0.0;
+    final precioDia   = (widget.cancha['precio_dia']   as num?)?.toDouble();
+    final precioNoche = (widget.cancha['precio_noche'] as num?)?.toDouble();
+
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.negro2,
@@ -313,7 +360,7 @@ class _ModalState extends State<_ModalReservaManual> {
             decoration: BoxDecoration(color: AppColors.borde, borderRadius: BorderRadius.circular(2))),
         const SizedBox(height: 16),
 
-        // Info del slot
+        // ── Info cancha + slot ─────────────────────────────────
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -321,42 +368,125 @@ class _ModalState extends State<_ModalReservaManual> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: AppColors.verde.withOpacity(0.3)),
           ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.sports_soccer, color: AppColors.verde, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(widget.cancha['cancha_nombre'] ?? '',
+                  style: const TextStyle(color: AppColors.texto, fontWeight: FontWeight.w700))),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+              DateFormat('dd/MM/yyyy').format(widget.fecha),
+              style: const TextStyle(color: AppColors.texto2, fontSize: 12),
+            ),
+            // Precios día/noche
+            if (precioDia != null && precioNoche != null) ...[
+              const SizedBox(height: 6),
+              Row(children: [
+                _badgePrecio('☀️ S/.${precioDia.toStringAsFixed(0)}/h', const Color(0xFFFBBF24)),
+                const SizedBox(width: 8),
+                _badgePrecio('🌙 S/.${precioNoche.toStringAsFixed(0)}/h', const Color(0xFF818CF8)),
+              ]),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 14),
+
+        // ── Selector de horario de inicio ──────────────────────
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.verde.withOpacity(0.4)),
+          ),
           child: Row(children: [
-            const Icon(Icons.sports_soccer, color: AppColors.verde, size: 18),
+            const Icon(Icons.schedule, color: AppColors.verde, size: 16),
             const SizedBox(width: 8),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.cancha['cancha_nombre'] ?? '',
-                  style: const TextStyle(color: AppColors.texto, fontWeight: FontWeight.w700)),
-              Text(
-                '${DateFormat('dd/MM/yyyy').format(widget.fecha)}  •  ${widget.slot['hora_inicio']} – ${widget.slot['hora_fin']}',
-                style: const TextStyle(color: AppColors.texto2, fontSize: 12),
+            Text('Inicio: ${widget.slot['hora_inicio']}',
+                style: const TextStyle(color: AppColors.verde, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text('Fin: $_horaFin',
+                style: const TextStyle(color: AppColors.texto2, fontSize: 13)),
+          ]),
+        ),
+        const SizedBox(height: 14),
+
+        // ── Selector de duración ───────────────────────────────
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Duración:', style: TextStyle(color: AppColors.texto2, fontSize: 13)),
+        ),
+        const SizedBox(height: 8),
+        Row(children: _duraciones.map((d) {
+          final val = d['value'] as double;
+          final sel = _duracion == val;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => setState(() => _duracion = val),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                decoration: BoxDecoration(
+                  color: sel ? AppColors.verdeGlow : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: sel ? AppColors.verde : AppColors.borde),
+                ),
+                child: Text(d['label'] as String,
+                    style: TextStyle(
+                      color: sel ? AppColors.verde : AppColors.texto2,
+                      fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+                      fontSize: 14,
+                    )),
               ),
-            ])),
-            Text('S/.${precio.toStringAsFixed(0)}',
-                style: const TextStyle(color: AppColors.verde, fontWeight: FontWeight.w700, fontSize: 16)),
+            ),
+          );
+        }).toList()),
+        const SizedBox(height: 14),
+
+        // ── Resumen precio ─────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.negro,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.borde),
+          ),
+          child: Row(children: [
+            Text(
+              'S/.${_precioSlot.toStringAsFixed(0)}/h × ${_duracion % 1 == 0 ? _duracion.toInt() : _duracion}h',
+              style: const TextStyle(color: AppColors.texto2, fontSize: 13),
+            ),
+            const Spacer(),
+            Text(
+              'Total: S/.${_precioTotal.toStringAsFixed(0)}',
+              style: const TextStyle(
+                  color: AppColors.verde, fontWeight: FontWeight.w800, fontSize: 16),
+            ),
           ]),
         ),
         const SizedBox(height: 16),
 
-        // Nombre
+        // ── Nombre ────────────────────────────────────────────
         _campo('Nombre del cliente', _nombreCtrl, TextInputType.name),
         const SizedBox(height: 10),
 
-        // DNI
+        // ── DNI ───────────────────────────────────────────────
         _campo('DNI (8 dígitos)', _dniCtrl, TextInputType.number, maxLength: 8),
         const SizedBox(height: 14),
 
-        // Tipo documento
+        // ── Tipo documento ────────────────────────────────────
         Row(children: [
           const Text('Comprobante:', style: TextStyle(color: AppColors.texto2, fontSize: 13)),
           const SizedBox(width: 12),
-          _chipDoc('boleta',   'Boleta'),
+          _chipDoc('boleta',  'Boleta'),
           const SizedBox(width: 8),
-          _chipDoc('factura',  'Factura'),
+          _chipDoc('factura', 'Factura'),
         ]),
         const SizedBox(height: 10),
 
-        // Campos factura
+        // ── Campos factura ────────────────────────────────────
         if (_tipoDoc == 'factura') ...[
           _campo('RUC (11 dígitos)', _rucCtrl, TextInputType.number, maxLength: 11),
           const SizedBox(height: 10),
@@ -364,7 +494,7 @@ class _ModalState extends State<_ModalReservaManual> {
           const SizedBox(height: 14),
         ],
 
-        // Método de pago
+        // ── Método de pago ────────────────────────────────────
         const Align(
           alignment: Alignment.centerLeft,
           child: Text('Método de pago:', style: TextStyle(color: AppColors.texto2, fontSize: 13)),
@@ -395,7 +525,7 @@ class _ModalState extends State<_ModalReservaManual> {
         }).toList()),
         const SizedBox(height: 16),
 
-        // Error
+        // ── Error ─────────────────────────────────────────────
         if (_error != null)
           Container(
             padding: const EdgeInsets.all(10),
@@ -408,7 +538,7 @@ class _ModalState extends State<_ModalReservaManual> {
             child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
           ),
 
-        // Botón confirmar
+        // ── Botón confirmar ───────────────────────────────────
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
@@ -421,13 +551,26 @@ class _ModalState extends State<_ModalReservaManual> {
             child: _loading
                 ? const SizedBox(width: 20, height: 20,
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Confirmar Reserva',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                : Text(
+                    'Confirmar — S/.${_precioTotal.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
           ),
         ),
       ])),
     );
   }
+
+  Widget _badgePrecio(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: color.withOpacity(0.3)),
+    ),
+    child: Text(text, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+  );
 
   Widget _campo(String label, TextEditingController ctrl, TextInputType tipo, {int? maxLength}) =>
     TextField(

@@ -13,3 +13,4 @@ from app.models.configuracion import Configuracion
 from app.models.suscripcion import Suscripcion
 from app.models.plan_config import PlanConfig
 from app.models.bloqueo import BloqueoHorario
+from app.models.configuracion_pago import ConfiguracionPago

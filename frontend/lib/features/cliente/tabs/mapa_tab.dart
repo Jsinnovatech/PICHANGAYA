@@ -53,8 +53,9 @@ class _MapaTabState extends State<MapaTab> {
         perm = await Geolocator.requestPermission();
       }
       if (perm == LocationPermission.deniedForever || perm == LocationPermission.denied) {
-        setState(() { _userPos = _defaultPos; _gpsActivo = false; });
-        await _cargarLocales();
+        // Sin GPS → mostrar todos los locales (posición por defecto no sirve para radio)
+        setState(() { _userPos = _defaultPos; _gpsActivo = false; _modoTodas = true; });
+        await _cargarTodosLocales();
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
@@ -68,10 +69,12 @@ class _MapaTabState extends State<MapaTab> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _mapController.move(_userPos!, 14.5);
       });
+      await _cargarLocales();
     } catch (_) {
-      setState(() { _userPos = _defaultPos; _gpsActivo = false; });
+      // GPS no disponible (timeout, error de plataforma) → mostrar todos
+      setState(() { _userPos = _defaultPos; _gpsActivo = false; _modoTodas = true; });
+      await _cargarTodosLocales();
     }
-    await _cargarLocales();
   }
 
   // ── Carga con radio (cerca) ────────────────────────────────────
@@ -88,12 +91,16 @@ class _MapaTabState extends State<MapaTab> {
           'radio': _radio,
         },
       );
-      setState(() {
-        _locales = (res.data as List).map((j) => LocalModel.fromJson(j)).toList();
-        _loading = false;
-      });
+      final lista = (res.data as List).map((j) => LocalModel.fromJson(j)).toList();
+      if (lista.isEmpty) {
+        // Sin resultados en el radio → fallback automático a "ver todos"
+        setState(() { _modoTodas = true; });
+        await _cargarTodosLocales();
+        return;
+      }
+      setState(() { _locales = lista; _loading = false; });
     } catch (e) {
-      setState(() { _error = 'Error al cargar locales.'; _loading = false; });
+      setState(() { _error = 'Error al cargar locales: $e'; _loading = false; });
     }
   }
 

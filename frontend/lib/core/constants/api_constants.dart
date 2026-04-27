@@ -1,15 +1,16 @@
 import 'package:flutter/foundation.dart';
 
 class ApiConstants {
-  // Ambiente controlado mediante dart-define: --dart-define=API_ENV=development
-  // Por defecto apunta a producción.
+  // Ambiente controlado por dart-define:
+  //   --dart-define=API_ENV=development  → backend local (localhost)
+  //   (sin define / producción)          → Railway
   static const String _env = String.fromEnvironment('API_ENV', defaultValue: 'production');
 
   static const String _railwayUrl = 'https://pichangaya-production-0eb7.up.railway.app';
 
   // ── URL base según ambiente ──────────────────────────────────
-  // development + web  → localhost:8000  (navegador Chrome/Edge en la misma PC)
-  // development + móvil → 10.0.2.2:8000 (Android emulator apunta al host)
+  // development + web   → http://localhost:8000/api/v1
+  // development + móvil → http://10.0.2.2:8000/api/v1
   // production          → Railway
   static String get baseUrl {
     if (_env == 'development') {
@@ -56,7 +57,11 @@ class ApiConstants {
   static const String adminCanchas  = '/admin/canchas';
   static const String adminHorarios = '/admin/horarios';
   static const String adminBloqueos = '/admin/bloqueos';
-  static const String datosPago    = '/locales/configuracion/pagos';
+  static const String datosPago       = '/locales/configuracion/pagos';
+  static const String mediosPagoLocal = '/locales/{id}/medios-pago';
+
+  // Admin Medios de Pago
+  static const String adminMediosPago = '/admin/medios-pago';
 
   // Suscripcion
   static const String miSuscripcion = '/suscripcion/mi-suscripcion';

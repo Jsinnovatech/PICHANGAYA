@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from typing import List, Optional
 from datetime import date, datetime, timezone, time, timedelta
 import uuid
@@ -18,6 +18,7 @@ from app.models.local import Local
 from app.models.horario import HorarioDisponible
 from app.models.bloqueo import BloqueoHorario
 from app.models.comprobante import Comprobante, EstadoComprobanteEnum
+from app.models.configuracion_pago import ConfiguracionPago
 from app.notificaciones import notif_reserva_confirmada, notif_reserva_rechazada
 from app.schemas.admin import (
     ReservaAdminResponse,
@@ -38,6 +39,8 @@ from app.schemas.admin import (
     LocalUpdateRequest,
     BloqueoCreateRequest,
     BloqueoResponse,
+    MediosPagoResponse,
+    MediosPagoRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -311,11 +314,26 @@ async def admin_get_reservas(
             local   = locales_map.get(cancha.local_id) if cancha else None
             pago    = pagos_map.get(reserva.id)
 
+            # Detectar reserva manual y extraer nombre/DNI del walk-in
+            es_manual = False
+            nombre_display = cliente.nombre if cliente else "Desconocido"
+            celular_display = cliente.celular if cliente else ""
+            dni_display = None
+            if reserva.notas:
+                try:
+                    notas_json = json.loads(reserva.notas)
+                    if notas_json.get("manual"):
+                        es_manual = True
+                        nombre_display = notas_json.get("nombre_cliente", nombre_display)
+                        dni_display = notas_json.get("dni_cliente")
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+
             respuesta.append(ReservaAdminResponse(
                 id=reserva.id,
                 codigo=reserva.codigo,
-                cliente_nombre=cliente.nombre if cliente else "Desconocido",
-                cliente_celular=cliente.celular if cliente else "",
+                cliente_nombre=nombre_display,
+                cliente_celular=celular_display,
                 cancha_nombre=cancha.nombre if cancha else None,
                 local_nombre=local.nombre if local else None,
                 fecha=reserva.fecha,
@@ -327,7 +345,9 @@ async def admin_get_reservas(
                 metodo_pago=pago.metodo.value if pago else None,
                 voucher_url=pago.voucher_url if pago else None,
                 pago_estado=pago.estado.value if pago else None,
-                pago_id=pago.id if pago else None
+                pago_id=pago.id if pago else None,
+                es_manual=es_manual,
+                dni_cliente=dni_display,
             ))
         except Exception as e:
             logger.error(f"Error procesando reserva {reserva.id}: {e}", exc_info=True)
@@ -770,13 +790,49 @@ async def admin_actualizar_cancha(
     cancha = result.scalar_one_or_none()
     if not cancha:
         raise HTTPException(status_code=404, detail="Cancha no encontrada o no te pertenece")
-    if data.nombre is not None: cancha.nombre = data.nombre
-    if data.descripcion is not None: cancha.descripcion = data.descripcion
-    if data.capacidad is not None: cancha.capacidad = data.capacidad
-    if data.precio_hora is not None: cancha.precio_hora = data.precio_hora
-    if data.precio_dia is not None: cancha.precio_dia = data.precio_dia
+    if data.nombre       is not None: cancha.nombre       = data.nombre
+    if data.descripcion  is not None: cancha.descripcion  = data.descripcion
+    if data.capacidad    is not None: cancha.capacidad    = data.capacidad
+    if data.precio_hora  is not None: cancha.precio_hora  = data.precio_hora
+    if data.precio_dia   is not None: cancha.precio_dia   = data.precio_dia
     if data.precio_noche is not None: cancha.precio_noche = data.precio_noche
-    if data.superficie is not None: cancha.superficie = data.superficie
+    if data.superficie   is not None: cancha.superficie   = data.superficie
+
+    # Si cambiaron precios → regenerar HorarioDisponible para reflejar nuevas tarifas
+    precios_cambiaron = any([
+        data.precio_hora  is not None,
+        data.precio_dia   is not None,
+        data.precio_noche is not None,
+    ])
+    if precios_cambiaron:
+        from datetime import time as time_type
+        # Borrar horarios existentes de esta cancha
+        await db.execute(delete(HorarioDisponible).where(HorarioDisponible.cancha_id == cancha_id))
+
+        precio_dia_v   = float(cancha.precio_dia)   if cancha.precio_dia   is not None else None
+        precio_noche_v = float(cancha.precio_noche) if cancha.precio_noche is not None else None
+        tiene_franja   = precio_dia_v is not None and precio_noche_v is not None
+
+        for dia in range(7):
+            if tiene_franja:
+                db.add(HorarioDisponible(
+                    id=uuid.uuid4(), cancha_id=cancha_id, dia_semana=dia,
+                    hora_inicio=time_type(7, 0), hora_fin=time_type(18, 0),
+                    precio_override=precio_dia_v, activo=True
+                ))
+                db.add(HorarioDisponible(
+                    id=uuid.uuid4(), cancha_id=cancha_id, dia_semana=dia,
+                    hora_inicio=time_type(18, 0), hora_fin=time_type(0, 0),
+                    precio_override=precio_noche_v, activo=True
+                ))
+            else:
+                db.add(HorarioDisponible(
+                    id=uuid.uuid4(), cancha_id=cancha_id, dia_semana=dia,
+                    hora_inicio=time_type(7, 0), hora_fin=time_type(0, 0),
+                    precio_override=float(cancha.precio_hora) if cancha.precio_hora else None,
+                    activo=True
+                ))
+
     await db.commit()
     return {"mensaje": "Cancha actualizada"}
 
@@ -940,10 +996,25 @@ async def admin_get_facturacion(
         cancha  = canchas_map.get(reserva.cancha_id)
         comp    = comprobantes_map.get(reserva.id)
 
+        # Detectar reserva manual y usar nombre/DNI del walk-in
+        fact_es_manual = False
+        fact_nombre = cliente.nombre if cliente else "—"
+        fact_celular = cliente.celular if cliente else ""
+        fact_dni = None
+        if reserva.notas:
+            try:
+                notas_json = json.loads(reserva.notas)
+                if notas_json.get("manual"):
+                    fact_es_manual = True
+                    fact_nombre = notas_json.get("nombre_cliente", fact_nombre)
+                    fact_dni = notas_json.get("dni_cliente")
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
         respuesta.append(FacturacionItemResponse(
             reserva_id=reserva.id, codigo=reserva.codigo,
-            cliente_nombre=cliente.nombre if cliente else "—",
-            cliente_celular=cliente.celular if cliente else "",
+            cliente_nombre=fact_nombre,
+            cliente_celular=fact_celular,
             cancha_nombre=cancha.nombre if cancha else None,
             fecha=reserva.fecha, monto=float(pago.monto),
             metodo_pago=pago.metodo.value,
@@ -954,7 +1025,9 @@ async def admin_get_facturacion(
             comprobante_serie=comp.serie if comp else None,
             comprobante_numero=comp.numero if comp else None,
             pdf_url=comp.pdf_url if comp else None,
-            fecha_pago=str(pago.created_at.date()) if pago.created_at else None
+            fecha_pago=str(pago.created_at.date()) if pago.created_at else None,
+            es_manual=fact_es_manual,
+            dni_cliente=fact_dni,
         ))
     return respuesta
 
@@ -1203,6 +1276,8 @@ async def _get_disponibilidad_canchas_impl(fecha, current_user, db):
             cancha_nombre=cancha.nombre,
             tipo_piso=cancha.tipo_piso if hasattr(cancha, 'tipo_piso') else None,
             precio_hora=precio_base,
+            precio_dia=float(cancha.precio_dia) if cancha.precio_dia is not None else None,
+            precio_noche=float(cancha.precio_noche) if cancha.precio_noche is not None else None,
             slots=slots
         ))
 
@@ -1330,6 +1405,60 @@ async def crear_reserva_manual(
         "precio_total": precio_total,
         "mensaje": "Reserva manual creada exitosamente"
     }
+
+
+# ══════════════════════════════════════════════
+# MEDIOS DE PAGO (por admin)
+# ══════════════════════════════════════════════
+
+@router.get("/medios-pago", response_model=MediosPagoResponse)
+async def get_medios_pago(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Devuelve la configuración de medios de pago del admin autenticado."""
+    admin_uuid = uuid.UUID(current_user["id"])
+    result = await db.execute(
+        select(ConfiguracionPago).where(ConfiguracionPago.admin_id == admin_uuid)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        return MediosPagoResponse()
+    return MediosPagoResponse(
+        yape_numero=config.yape_numero,
+        qr_imagen_base64=config.qr_imagen_base64,
+        cuenta_bcp=config.cuenta_bcp,
+        cuenta_bbva=config.cuenta_bbva,
+    )
+
+
+@router.put("/medios-pago", response_model=MediosPagoResponse)
+async def upsert_medios_pago(
+    data: MediosPagoRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Crea o actualiza la configuración de medios de pago del admin."""
+    admin_uuid = uuid.UUID(current_user["id"])
+    result = await db.execute(
+        select(ConfiguracionPago).where(ConfiguracionPago.admin_id == admin_uuid)
+    )
+    config = result.scalar_one_or_none()
+    if config is None:
+        config = ConfiguracionPago(id=uuid.uuid4(), admin_id=admin_uuid)
+        db.add(config)
+    config.yape_numero = data.yape_numero
+    config.qr_imagen_base64 = data.qr_imagen_base64
+    config.cuenta_bcp = data.cuenta_bcp
+    config.cuenta_bbva = data.cuenta_bbva
+    await db.commit()
+    await db.refresh(config)
+    return MediosPagoResponse(
+        yape_numero=config.yape_numero,
+        qr_imagen_base64=config.qr_imagen_base64,
+        cuenta_bcp=config.cuenta_bcp,
+        cuenta_bbva=config.cuenta_bbva,
+    )
 
 
 # ══════════════════════════════════════════════

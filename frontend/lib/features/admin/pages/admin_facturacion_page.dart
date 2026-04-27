@@ -185,6 +185,8 @@ class _State extends State<AdminFacturacionPage> {
   Widget _cardItem(Map<String, dynamic> e) {
     final tipoDoc    = e['tipo_doc'] as String?;
     final compEstado = e['comprobante_estado'] as String?;
+    final esManual   = e['es_manual'] == true;
+    final dni        = e['dni_cliente'] as String?;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -199,6 +201,18 @@ class _State extends State<AdminFacturacionPage> {
           Text(e['codigo'] ?? '—',
               style: const TextStyle(fontSize: 11, color: AppColors.texto2,
                   fontWeight: FontWeight.w600)),
+          if (esManual) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('🖊️ Manual',
+                  style: TextStyle(fontSize: 9, color: Colors.orange, fontWeight: FontWeight.w700)),
+            ),
+          ],
           const Spacer(),
           _badgeTipoDoc(tipoDoc),
         ]),
@@ -206,8 +220,13 @@ class _State extends State<AdminFacturacionPage> {
         Text(e['cliente_nombre'] ?? '—',
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
                 color: Colors.white)),
-        Text('+51 ${e['cliente_celular'] ?? ''}',
-            style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
+        if (dni != null)
+          Text('DNI: $dni',
+              style: const TextStyle(fontSize: 11, color: AppColors.texto2,
+                  fontWeight: FontWeight.w600))
+        else
+          Text('+51 ${e['cliente_celular'] ?? ''}',
+              style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         const SizedBox(height: 6),
         Row(children: [
           Text('${e['cancha_nombre'] ?? '—'} · ${e['fecha'] ?? ''}',
