@@ -84,7 +84,7 @@ class _State extends State<AdminReservaManualPage> {
           const Icon(Icons.calendar_today, color: AppColors.verde, size: 18),
           const SizedBox(width: 8),
           Text(
-            DateFormat('EEEE d MMM yyyy', 'es').format(_fecha),
+            DateFormat('dd/MM/yyyy').format(_fecha),
             style: const TextStyle(color: AppColors.texto, fontWeight: FontWeight.w600),
           ),
           const Spacer(),
@@ -328,7 +328,7 @@ class _ModalState extends State<_ModalReservaManual> {
               Text(widget.cancha['cancha_nombre'] ?? '',
                   style: const TextStyle(color: AppColors.texto, fontWeight: FontWeight.w700)),
               Text(
-                '${DateFormat('d MMM', 'es').format(widget.fecha)}  •  ${widget.slot['hora_inicio']} – ${widget.slot['hora_fin']}',
+                '${DateFormat('dd/MM/yyyy').format(widget.fecha)}  •  ${widget.slot['hora_inicio']} – ${widget.slot['hora_fin']}',
                 style: const TextStyle(color: AppColors.texto2, fontSize: 12),
               ),
             ])),

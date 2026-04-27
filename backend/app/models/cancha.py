@@ -14,6 +14,8 @@ class Cancha(Base):
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     capacidad: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=10)
     precio_hora: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False)
+    precio_dia: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    precio_noche: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     superficie: Mapped[str | None] = mapped_column(String(50), nullable=True)
     foto_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     activa: Mapped[bool] = mapped_column(Boolean, default=True)

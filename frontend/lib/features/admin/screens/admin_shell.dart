@@ -15,7 +15,6 @@ import 'package:pichangaya/features/admin/pages/admin_locales_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_reserva_manual_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_suscripcion_page.dart';
 import 'package:pichangaya/features/admin/pages/admin_bloqueos_page.dart';
-import 'package:pichangaya/features/admin/pages/admin_horarios_page.dart';
 
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
@@ -38,7 +37,6 @@ class _State extends State<AdminShell> {
     {'icon': '⏱️', 'label': 'Timers'},
     {'icon': '🧾', 'label': 'Facturación'},
     {'icon': '🏟️', 'label': 'Canchas'},
-    {'icon': '🗓️', 'label': 'Horarios'},
     {'icon': '🔒', 'label': 'Bloqueos'},
     {'icon': '📍', 'label': 'Locales'},
     {'icon': '💎', 'label': 'Suscripción'},
@@ -53,7 +51,6 @@ class _State extends State<AdminShell> {
     const AdminTimersPage(),
     const AdminFacturacionPage(),
     const AdminCanchasPage(),
-    const AdminHorariosPage(),
     const AdminBloqueosPage(),
     const AdminLocalesPage(),
     const AdminSuscripcionPage(),
@@ -212,7 +209,6 @@ class _State extends State<AdminShell> {
       '⏱️ Timers',
       '🧾 Facturación',
       '🏟️ Canchas',
-      '🗓️ Horarios',
       '🔒 Bloqueos de Horario',
       '📍 Locales',
       '💎 Suscripción',

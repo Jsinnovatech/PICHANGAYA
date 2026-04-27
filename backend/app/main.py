@@ -18,16 +18,18 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS — solo orígenes permitidos del .env
-allowed_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
-use_wildcard = "*" in allowed_origins
+# CORS
+# En DEBUG (desarrollo local) se acepta cualquier origen para no bloquear Flutter web.
+# En producción se usan únicamente los orígenes del .env.
+_raw_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+_use_wildcard = settings.DEBUG or "*" in _raw_origins
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if use_wildcard else allowed_origins,
-    allow_credentials=False if use_wildcard else True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    allow_origins=["*"] if _use_wildcard else _raw_origins,
+    allow_credentials=not _use_wildcard,   # credentials=True incompatible con wildcard
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth.router,                   prefix=settings.API_V1_PREFIX)

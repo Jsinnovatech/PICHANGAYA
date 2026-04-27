@@ -352,8 +352,8 @@ class _FormularioBloqueoState extends State<_FormularioBloqueo> {
   bool _loading            = false;
   String? _error;
 
-  // Slots de 1 hora de 07:00 a 00:00
-  static final List<String> _horas = List.generate(17, (i) {
+  // Slots de 1 hora de 07:00 a 00:00 (inclusive)
+  static final List<String> _horas = List.generate(18, (i) {
     final h = i + 7;
     return h == 24 ? '00:00' : '${h.toString().padLeft(2, '0')}:00';
   });
@@ -469,7 +469,7 @@ class _FormularioBloqueoState extends State<_FormularioBloqueo> {
             child: Row(children: [
               const Icon(Icons.calendar_today, color: AppColors.verde, size: 16),
               const SizedBox(width: 10),
-              Text(DateFormat('EEEE d MMMM yyyy', 'es').format(_fecha),
+              Text(DateFormat('dd/MM/yyyy').format(_fecha),
                   style: const TextStyle(color: Colors.white, fontSize: 14)),
             ]),
           ),
@@ -498,8 +498,24 @@ class _FormularioBloqueoState extends State<_FormularioBloqueo> {
         TextField(
           controller: _motivoCtrl,
           style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Ej: Mantenimiento del césped, Evento privado...',
+            hintStyle: const TextStyle(color: AppColors.texto2, fontSize: 13),
+            filled: true,
+            fillColor: AppColors.negro3,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: AppColors.borde),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: AppColors.borde),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: AppColors.naranja),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           ),
         ),
         const SizedBox(height: 16),

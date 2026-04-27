@@ -204,6 +204,8 @@ class CanchaAdminResponse(BaseModel):
     descripcion: Optional[str] = None
     capacidad: int
     precio_hora: float
+    precio_dia: Optional[float] = None
+    precio_noche: Optional[float] = None
     superficie: Optional[str] = None
     activa: bool
 
@@ -217,6 +219,8 @@ class CanchaCreateRequest(BaseModel):
     descripcion: Optional[str] = None
     capacidad: int = 10
     precio_hora: float
+    precio_dia: Optional[float] = None
+    precio_noche: Optional[float] = None
     superficie: Optional[str] = None
 
     @field_validator("nombre")
@@ -233,11 +237,11 @@ class CanchaCreateRequest(BaseModel):
             raise ValueError("La capacidad debe ser mayor a 0")
         return v
 
-    @field_validator("precio_hora")
+    @field_validator("precio_hora", "precio_dia", "precio_noche")
     @classmethod
-    def precio_positivo(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("El precio por hora debe ser mayor a 0")
+    def precio_positivo(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("El precio debe ser mayor a 0")
         return v
 
 
@@ -246,6 +250,8 @@ class CanchaUpdateRequest(BaseModel):
     descripcion: Optional[str] = None
     capacidad: Optional[int] = None
     precio_hora: Optional[float] = None
+    precio_dia: Optional[float] = None
+    precio_noche: Optional[float] = None
     superficie: Optional[str] = None
 
     @field_validator("capacidad")
@@ -255,11 +261,11 @@ class CanchaUpdateRequest(BaseModel):
             raise ValueError("La capacidad debe ser mayor a 0")
         return v
 
-    @field_validator("precio_hora")
+    @field_validator("precio_hora", "precio_dia", "precio_noche")
     @classmethod
     def precio_positivo(cls, v):
         if v is not None and v <= 0:
-            raise ValueError("El precio por hora debe ser mayor a 0")
+            raise ValueError("El precio debe ser mayor a 0")
         return v
 
 

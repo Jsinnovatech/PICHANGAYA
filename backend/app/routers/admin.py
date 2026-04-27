@@ -664,6 +664,8 @@ async def admin_get_canchas(
             local_nombre=local_nombre,
             nombre=c.nombre, descripcion=c.descripcion,
             capacidad=c.capacidad, precio_hora=float(c.precio_hora),
+            precio_dia=float(c.precio_dia) if c.precio_dia is not None else None,
+            precio_noche=float(c.precio_noche) if c.precio_noche is not None else None,
             superficie=c.superficie, activa=c.activa
         )
         for c, local_nombre in filas
@@ -688,24 +690,39 @@ async def admin_crear_cancha(
     cancha = Cancha(
         local_id=data.local_id, nombre=data.nombre,
         descripcion=data.descripcion, capacidad=data.capacidad,
-        precio_hora=data.precio_hora, superficie=data.superficie
+        precio_hora=data.precio_hora,
+        precio_dia=data.precio_dia,
+        precio_noche=data.precio_noche,
+        superficie=data.superficie
     )
     db.add(cancha)
     await db.flush()  # obtener el ID de la cancha antes del commit
 
-    # Auto-crear horarios por defecto: lunes a domingo, 08:00 – 22:00
+    # Auto-crear horarios por defecto: lunes a domingo, 07:00 – 00:00
+    # Si se especifican precios día/noche → 2 horarios por día (07:00-18:00 y 18:00-00:00)
+    # Si no → 1 horario por día (07:00–00:00)
     from datetime import time as time_type
+    tiene_precios_franja = data.precio_dia is not None and data.precio_noche is not None
     for dia in range(7):  # 0=Lunes ... 6=Domingo
-        horario = HorarioDisponible(
-            id=uuid.uuid4(),
-            cancha_id=cancha.id,
-            dia_semana=dia,
-            hora_inicio=time_type(7, 0),
-            hora_fin=time_type(0, 0),
-            precio_override=None,
-            activo=True
-        )
-        db.add(horario)
+        if tiene_precios_franja:
+            # Franja diurna 07:00–18:00
+            db.add(HorarioDisponible(
+                id=uuid.uuid4(), cancha_id=cancha.id, dia_semana=dia,
+                hora_inicio=time_type(7, 0), hora_fin=time_type(18, 0),
+                precio_override=data.precio_dia, activo=True
+            ))
+            # Franja nocturna 18:00–00:00
+            db.add(HorarioDisponible(
+                id=uuid.uuid4(), cancha_id=cancha.id, dia_semana=dia,
+                hora_inicio=time_type(18, 0), hora_fin=time_type(0, 0),
+                precio_override=data.precio_noche, activo=True
+            ))
+        else:
+            db.add(HorarioDisponible(
+                id=uuid.uuid4(), cancha_id=cancha.id, dia_semana=dia,
+                hora_inicio=time_type(7, 0), hora_fin=time_type(0, 0),
+                precio_override=None, activo=True
+            ))
 
     await db.commit()
     await db.refresh(cancha)
@@ -713,6 +730,8 @@ async def admin_crear_cancha(
         id=cancha.id, local_id=cancha.local_id, local_nombre=local.nombre,
         nombre=cancha.nombre, descripcion=cancha.descripcion,
         capacidad=cancha.capacidad, precio_hora=float(cancha.precio_hora),
+        precio_dia=float(cancha.precio_dia) if cancha.precio_dia is not None else None,
+        precio_noche=float(cancha.precio_noche) if cancha.precio_noche is not None else None,
         superficie=cancha.superficie, activa=cancha.activa
     )
 
@@ -755,6 +774,8 @@ async def admin_actualizar_cancha(
     if data.descripcion is not None: cancha.descripcion = data.descripcion
     if data.capacidad is not None: cancha.capacidad = data.capacidad
     if data.precio_hora is not None: cancha.precio_hora = data.precio_hora
+    if data.precio_dia is not None: cancha.precio_dia = data.precio_dia
+    if data.precio_noche is not None: cancha.precio_noche = data.precio_noche
     if data.superficie is not None: cancha.superficie = data.superficie
     await db.commit()
     return {"mensaje": "Cancha actualizada"}
@@ -1082,6 +1103,16 @@ async def get_disponibilidad_canchas(
     db: AsyncSession = Depends(get_db)
 ):
     """Devuelve todas las canchas del local del admin con sus slots del día."""
+    try:
+        return await _get_disponibilidad_canchas_impl(fecha, current_user, db)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error en disponibilidad-canchas", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno: {exc}")
+
+
+async def _get_disponibilidad_canchas_impl(fecha, current_user, db):
     admin_uuid = uuid.UUID(current_user["id"])
     dia_semana = fecha.weekday()
 
@@ -1228,7 +1259,28 @@ async def crear_reserva_manual(
         if _t_min(r.hora_inicio) < new_end and _t_min(r.hora_fin) > new_start:
             raise HTTPException(status_code=409, detail=f"El horario {data.hora_inicio}–{data.hora_fin} ya está reservado")
 
-    precio_total = round(float(cancha.precio_hora) * (new_end - new_start) / 60, 2)
+    # ── Precio correcto según franja horaria (día / noche) ────────
+    dia_semana = data.fecha.weekday()  # 0=Lunes … 6=Domingo
+    horarios_dia_r = await db.execute(
+        select(HorarioDisponible).where(
+            HorarioDisponible.cancha_id == data.cancha_id,
+            HorarioDisponible.dia_semana == dia_semana,
+            HorarioDisponible.activo == True,
+        )
+    )
+    horarios_dia = horarios_dia_r.scalars().all()
+
+    precio_hora_slot = float(cancha.precio_hora)  # fallback
+    for h in horarios_dia:
+        h_ini = _t_min(h.hora_inicio)
+        h_fin = _t_min(h.hora_fin)
+        # El slot debe estar completamente dentro de este horario
+        if h_ini <= new_start and h_fin >= new_end:
+            if h.precio_override is not None:
+                precio_hora_slot = float(h.precio_override)
+            break
+
+    precio_total = round(precio_hora_slot * (new_end - new_start) / 60, 2)
 
     # Guardar datos del cliente walk-in en notas (JSON)
     notas_data = json.dumps({

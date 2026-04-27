@@ -85,13 +85,42 @@ const app = initializeApp(firebaseConfig);
 BO-zL00Gw34QLvk5Zh45wQYdjqLFpusN0l2Z3mUX_to-wIUvhGYW6rY9kgEzWy3sdTKKz5zs8T8dR5gd8GxPrWI
 
 
-
 cd E:\PICHANGAYA\frontend
   flutter clean                                                                                                                                                           flutter pub get
   flutter build apk --release --split-per-abi 
 
+  Trabajo diario (siempre en develop):
 
-PAR SIMPLIFICAR CODIGO
-create un skill para el code review 
+  git checkout develop
+  # ... trabajas, haces cambios ...
+  git add .
+  git commit -m "feat: lo que hiciste"
+  git push origin develop
+
+  Cuando quieres subir a producción:
+
+  git checkout main
+  git merge develop
+  git push origin main
+  # En tu servidor: git pull origin main
+
+  Si encuentras un bug en producción:
+
+  git checkout main
+  git checkout -b hotfix/nombre-del-bug
+  # ... corriges ...
+  git add .
+  git commit -m "fix: descripcion"
+  git checkout main
+  git merge hotfix/nombre-del-bug
+  git push origin main
+
+  # Pasar el fix también a develop:
+  git checkout develop
+  git merge hotfix/nombre-del-bug
+  git push origin develop
+
+  git branch -d hotfix/nombre-del-bug
+
 
 

@@ -13,10 +13,12 @@ class AddCanchaModal extends StatefulWidget {
 }
 
 class _State extends State<AddCanchaModal> {
-  final _nombreCtrl    = TextEditingController();
-  final _capacidadCtrl = TextEditingController(text: '10');
-  final _precioCtrl    = TextEditingController();
-  final _descCtrl      = TextEditingController();
+  final _nombreCtrl      = TextEditingController();
+  final _capacidadCtrl   = TextEditingController(text: '10');
+  final _precioCtrl      = TextEditingController();
+  final _precioDiaCtrl   = TextEditingController();
+  final _precioNocheCtrl = TextEditingController();
+  final _descCtrl        = TextEditingController();
 
   List<dynamic> _locales = [];
   String? _localId;
@@ -38,19 +40,22 @@ class _State extends State<AddCanchaModal> {
     // Pre-rellenar si es edición
     if (_esEdicion) {
       final c = widget.cancha!;
-      _nombreCtrl.text    = c['nombre'] ?? '';
-      _capacidadCtrl.text = '${c['capacidad'] ?? 10}';
-      _precioCtrl.text    = '${c['precio_hora'] ?? ''}';
-      _descCtrl.text      = c['descripcion'] ?? '';
-      _superficie         = c['superficie'] ?? 'Gras Sintético';
-      _localId            = c['local_id']?.toString();
+      _nombreCtrl.text      = c['nombre'] ?? '';
+      _capacidadCtrl.text   = '${c['capacidad'] ?? 10}';
+      _precioCtrl.text      = '${c['precio_hora'] ?? ''}';
+      _precioDiaCtrl.text   = c['precio_dia'] != null ? '${c['precio_dia']}' : '';
+      _precioNocheCtrl.text = c['precio_noche'] != null ? '${c['precio_noche']}' : '';
+      _descCtrl.text        = c['descripcion'] ?? '';
+      _superficie           = c['superficie'] ?? 'Gras Sintético';
+      _localId              = c['local_id']?.toString();
     }
   }
 
   @override
   void dispose() {
     _nombreCtrl.dispose(); _capacidadCtrl.dispose();
-    _precioCtrl.dispose(); _descCtrl.dispose();
+    _precioCtrl.dispose(); _precioDiaCtrl.dispose();
+    _precioNocheCtrl.dispose(); _descCtrl.dispose();
     super.dispose();
   }
 
@@ -64,14 +69,24 @@ class _State extends State<AddCanchaModal> {
   }
 
   Future<void> _guardar() async {
-    final nombre     = _nombreCtrl.text.trim();
-    final precio     = double.tryParse(_precioCtrl.text.trim());
-    final capacidad  = int.tryParse(_capacidadCtrl.text.trim());
+    final nombre      = _nombreCtrl.text.trim();
+    final precio      = double.tryParse(_precioCtrl.text.trim());
+    final capacidad   = int.tryParse(_capacidadCtrl.text.trim());
+    final precioDia   = _precioDiaCtrl.text.trim().isNotEmpty
+        ? double.tryParse(_precioDiaCtrl.text.trim()) : null;
+    final precioNoche = _precioNocheCtrl.text.trim().isNotEmpty
+        ? double.tryParse(_precioNocheCtrl.text.trim()) : null;
 
     if (nombre.isEmpty)                       { setState(() => _error = 'Ingresa el nombre'); return; }
     if (!_esEdicion && _localId == null)      { setState(() => _error = 'Selecciona un local'); return; }
-    if (precio == null || precio <= 0)        { setState(() => _error = 'Ingresa un precio válido'); return; }
+    if (precio == null || precio <= 0)        { setState(() => _error = 'Ingresa un precio/hora válido'); return; }
     if (capacidad == null || capacidad <= 0)  { setState(() => _error = 'Ingresa una capacidad válida'); return; }
+    if (_precioDiaCtrl.text.trim().isNotEmpty && (precioDia == null || precioDia <= 0)) {
+      setState(() => _error = 'Precio día inválido'); return;
+    }
+    if (_precioNocheCtrl.text.trim().isNotEmpty && (precioNoche == null || precioNoche <= 0)) {
+      setState(() => _error = 'Precio noche inválido'); return;
+    }
 
     setState(() { _loading = true; _error = null; });
     try {
@@ -82,6 +97,8 @@ class _State extends State<AddCanchaModal> {
         'superficie':  _superficie,
         if (_descCtrl.text.trim().isNotEmpty) 'descripcion': _descCtrl.text.trim(),
         if (!_esEdicion) 'local_id': _localId,
+        if (precioDia != null) 'precio_dia': precioDia,
+        if (precioNoche != null) 'precio_noche': precioNoche,
       };
 
       if (_esEdicion) {
@@ -189,6 +206,22 @@ class _State extends State<AddCanchaModal> {
                   decoration: const InputDecoration(hintText: '70.00')),
             ])),
           ]),
+          const SizedBox(height: 14),
+
+          // Precios diferenciados día/noche (opcional)
+          _label('☀️ PRECIO DÍA 07:00–18:00 (S/.) — opcional'),
+          TextField(
+            controller: _precioDiaCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(hintText: 'Ej: 60.00'),
+          ),
+          const SizedBox(height: 10),
+          _label('🌙 PRECIO NOCHE 18:00–00:00 (S/.) — opcional'),
+          TextField(
+            controller: _precioNocheCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(hintText: 'Ej: 80.00'),
+          ),
           const SizedBox(height: 14),
 
           _label('SUPERFICIE'),

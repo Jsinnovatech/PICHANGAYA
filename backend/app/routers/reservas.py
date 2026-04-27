@@ -15,6 +15,7 @@ from app.models.cancha import Cancha
 from app.models.local import Local
 from app.models.user import User
 from app.models.comprobante import Comprobante
+from app.models.horario import HorarioDisponible
 from app.schemas.reservas import ReservaCreateRequest, ReservaResponse, MiReservaResponse
 from app.notificaciones import notif_reserva_nueva, notif_reserva_cancelada_por_cliente
 
@@ -105,6 +106,23 @@ async def crear_reserva(
         if not rs:
             raise HTTPException(status_code=400, detail="La razón social es obligatoria para facturas")
 
+    # ── Paso 4c: Precio según franja horaria (día/noche) ─────
+    dia_semana = data.fecha.weekday()
+    horarios_r = await db.execute(
+        select(HorarioDisponible).where(
+            HorarioDisponible.cancha_id == data.cancha_id,
+            HorarioDisponible.dia_semana == dia_semana,
+            HorarioDisponible.activo == True,
+        )
+    )
+    precio_hora_slot = float(cancha.precio_hora)  # fallback
+    for h in horarios_r.scalars().all():
+        h_ini = (0 if (h.hora_inicio.hour == 0 and h.hora_inicio.minute == 0) else h.hora_inicio.hour) * 60 + h.hora_inicio.minute
+        h_fin = 1440 if (h.hora_fin.hour == 0 and h.hora_fin.minute == 0) else h.hora_fin.hour * 60 + h.hora_fin.minute
+        if h_ini <= new_start and h_fin >= new_end and h.precio_override is not None:
+            precio_hora_slot = float(h.precio_override)
+            break
+
     # ── Paso 5: Crear reserva ─────────────────────────────────
     nueva_reserva = Reserva(
         id=uuid.uuid4(),
@@ -114,7 +132,7 @@ async def crear_reserva(
         fecha=data.fecha,
         hora_inicio=hora_inicio_time,
         hora_fin=hora_fin_time,
-        precio_total=round(float(cancha.precio_hora) * (new_end - new_start) / 60, 2),
+        precio_total=round(precio_hora_slot * (new_end - new_start) / 60, 2),
         estado=EstadoReservaEnum.pending,
         tipo_doc=TipoDocEnum.factura if es_factura else TipoDocEnum.boleta,
         ruc_factura=data.ruc_factura.strip() if es_factura and data.ruc_factura else None,
