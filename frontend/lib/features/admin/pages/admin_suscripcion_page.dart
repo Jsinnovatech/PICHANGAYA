@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,8 +16,11 @@ class AdminSuscripcionPage extends StatefulWidget {
 class _State extends State<AdminSuscripcionPage> {
   List<dynamic> _planes = [];
   Map<String, dynamic>? _suscripcion;
-  String _yapeNumero = '';
-  bool _loading = true;
+  String  _yapeNumero    = '';
+  String? _qrBase64;
+  String? _cuentaBcp;
+  String? _cuentaBbva;
+  bool    _loading = true;
   String? _error;
 
   @override
@@ -32,9 +36,13 @@ class _State extends State<AdminSuscripcionPage> {
         ApiClient().dio.get('/suscripcion/planes'),
         ApiClient().dio.get('/suscripcion/mi-suscripcion'),
       ]);
+      final planesData = results[0].data as Map<String, dynamic>;
       setState(() {
-        _planes      = results[0].data['planes'] ?? [];
-        _yapeNumero  = results[0].data['yape_numero'] ?? '';
+        _planes      = planesData['planes'] ?? [];
+        _yapeNumero  = planesData['yape_numero'] ?? '';
+        _qrBase64    = planesData['qr_imagen_base64'] as String?;
+        _cuentaBcp   = planesData['cuenta_bcp']  as String?;
+        _cuentaBbva  = planesData['cuenta_bbva'] as String?;
         _suscripcion = results[1].data;
         _loading     = false;
       });
@@ -243,6 +251,9 @@ class _State extends State<AdminSuscripcionPage> {
       builder: (_) => _PagoSheet(
         plan: plan,
         yapeNumero: _yapeNumero,
+        qrBase64:   _qrBase64,
+        cuentaBcp:  _cuentaBcp,
+        cuentaBbva: _cuentaBbva,
         onPagoConfirmado: () {
           Navigator.pop(context);
           _cargar();
@@ -274,12 +285,18 @@ class _State extends State<AdminSuscripcionPage> {
 
 class _PagoSheet extends StatefulWidget {
   final Map<String, dynamic> plan;
-  final String yapeNumero;
+  final String  yapeNumero;
+  final String? qrBase64;
+  final String? cuentaBcp;
+  final String? cuentaBbva;
   final VoidCallback onPagoConfirmado;
 
   const _PagoSheet({
     required this.plan,
     required this.yapeNumero,
+    this.qrBase64,
+    this.cuentaBcp,
+    this.cuentaBbva,
     required this.onPagoConfirmado,
   });
 
@@ -335,11 +352,27 @@ class _PagoSheetState extends State<_PagoSheet> {
         'imagen': MultipartFile.fromBytes(
           _imagenBytes!,
           filename: _imagenNombre ?? 'voucher.jpg',
+          contentType: DioMediaType('image', 'jpeg'),
         ),
       });
       await ApiClient().dio.post('/suscripcion/$suscripcionId/voucher', data: formData);
 
       widget.onPagoConfirmado();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      String msg = 'Error al enviar el pago. Intenta de nuevo.';
+      final status = e.response?.statusCode;
+      if (status == 409) {
+        msg = 'Ya tienes un pago pendiente. El super admin lo verificará pronto.';
+      } else if (status == 503) {
+        msg = 'Servicio de imágenes no disponible. Intenta más tarde.';
+      } else if (e.response?.data?['detail'] != null) {
+        msg = e.response!.data['detail'].toString();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: AppColors.rojo,
+      ));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -419,7 +452,9 @@ class _PagoSheetState extends State<_PagoSheet> {
           // Botón confirmar (solo en tab pago)
           if (_tab == 1)
             Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+              padding: EdgeInsets.fromLTRB(16, 0, 16,
+                MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom + 16),
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -514,20 +549,28 @@ class _PagoSheetState extends State<_PagoSheet> {
   List<Widget> _buildPago(double precio) {
     final numero = widget.yapeNumero.isNotEmpty ? widget.yapeNumero : 'No configurado';
 
+    // Decode QR if present
+    Uint8List? qrBytes;
+    final qr = widget.qrBase64;
+    if (qr != null && qr.isNotEmpty) {
+      try {
+        qrBytes = base64Decode(qr.contains(',') ? qr.split(',').last : qr);
+      } catch (_) {}
+    }
+
     return [
       // Card Yape número
       Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [const Color(0xFF6C1FC9), const Color(0xFF8B2BE2)],
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6C1FC9), Color(0xFF8B2BE2)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(children: [
-          // Logo Yape simulado
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -543,8 +586,19 @@ class _PagoSheetState extends State<_PagoSheet> {
           const SizedBox(height: 8),
           Text(
             numero,
-            style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 6),
+            style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 4),
           ),
+          // QR image
+          if (qrBytes != null) ...[
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.memory(qrBytes, width: 150, height: 150, fit: BoxFit.contain),
+            ),
+            const SizedBox(height: 6),
+            const Text('Escanea el QR para pagar',
+                style: TextStyle(color: Colors.white70, fontSize: 11)),
+          ],
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -574,7 +628,60 @@ class _PagoSheetState extends State<_PagoSheet> {
           label: const Text('Copiar número', style: TextStyle(color: AppColors.texto2, fontSize: 12)),
         ),
 
-      const SizedBox(height: 4),
+      // Cuentas bancarias
+      if ((widget.cuentaBcp?.isNotEmpty ?? false) || (widget.cuentaBbva?.isNotEmpty ?? false)) ...[
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.negro3,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.borde),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('🏦 También puedes transferir',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.texto2)),
+            const SizedBox(height: 10),
+            if (widget.cuentaBcp?.isNotEmpty ?? false) ...[
+              const Text('BCP', style: TextStyle(fontSize: 11, color: AppColors.texto2)),
+              const SizedBox(height: 2),
+              Row(children: [
+                Expanded(child: Text(widget.cuentaBcp!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white))),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: widget.cuentaBcp!));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('📋 Cuenta BCP copiada'), duration: Duration(seconds: 2),
+                      backgroundColor: AppColors.verde,
+                    ));
+                  },
+                  child: const Icon(Icons.copy, size: 14, color: AppColors.texto2),
+                ),
+              ]),
+              const SizedBox(height: 8),
+            ],
+            if (widget.cuentaBbva?.isNotEmpty ?? false) ...[
+              const Text('BBVA', style: TextStyle(fontSize: 11, color: AppColors.texto2)),
+              const SizedBox(height: 2),
+              Row(children: [
+                Expanded(child: Text(widget.cuentaBbva!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white))),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: widget.cuentaBbva!));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('📋 Cuenta BBVA copiada'), duration: Duration(seconds: 2),
+                      backgroundColor: AppColors.verde,
+                    ));
+                  },
+                  child: const Icon(Icons.copy, size: 14, color: AppColors.texto2),
+                ),
+              ]),
+            ],
+          ]),
+        ),
+      ],
+
+      const SizedBox(height: 12),
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -586,7 +693,7 @@ class _PagoSheetState extends State<_PagoSheet> {
           Text('⚠️', style: TextStyle(fontSize: 14)),
           SizedBox(width: 8),
           Expanded(child: Text(
-            'Yapea exactamente el monto indicado.\nPon como concepto: "Suscripción PichangaYa"',
+            'Yapea o transfiere exactamente el monto indicado.\nPon como concepto: "Suscripción PichangaYa"',
             style: TextStyle(fontSize: 11, color: AppColors.amarillo, height: 1.5),
           )),
         ]),

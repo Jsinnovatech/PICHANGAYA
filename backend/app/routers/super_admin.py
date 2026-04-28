@@ -17,6 +17,7 @@ from app.models.cancha import Cancha
 from app.models.local import Local
 from datetime import date
 from app.models.plan_config import PlanConfig
+from app.models.configuracion_pago import ConfiguracionPago
 from app.notificaciones import (
     notif_suscripcion_aprobada,
     notif_suscripcion_rechazada
@@ -1233,3 +1234,57 @@ async def toggle_cancha(
     await db.commit()
     estado = "activada" if cancha.activa else "desactivada"
     return {"mensaje": f"Cancha '{cancha.nombre}' {estado}", "activa": cancha.activa}
+
+
+# ══════════════════════════════════════════════
+# MEDIOS DE PAGO DEL SUPER ADMIN
+# ══════════════════════════════════════════════
+
+class MediosPagoRequest(BaseModel):
+    yape_numero:      str | None = None
+    cuenta_bcp:       str | None = None
+    cuenta_bbva:      str | None = None
+    qr_imagen_base64: str | None = None
+
+
+@router.get("/medios-pago")
+async def get_medios_pago_super_admin(
+    current_user: dict = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    admin_id = uuid.UUID(current_user["id"])
+    result = await db.execute(
+        select(ConfiguracionPago).where(ConfiguracionPago.admin_id == admin_id)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        return {"yape_numero": None, "cuenta_bcp": None, "cuenta_bbva": None, "qr_imagen_base64": None}
+    return {
+        "yape_numero":      config.yape_numero,
+        "cuenta_bcp":       config.cuenta_bcp,
+        "cuenta_bbva":      config.cuenta_bbva,
+        "qr_imagen_base64": config.qr_imagen_base64,
+    }
+
+
+@router.put("/medios-pago")
+async def update_medios_pago_super_admin(
+    data: MediosPagoRequest,
+    current_user: dict = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    admin_id = uuid.UUID(current_user["id"])
+    result = await db.execute(
+        select(ConfiguracionPago).where(ConfiguracionPago.admin_id == admin_id)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        config = ConfiguracionPago(id=uuid.uuid4(), admin_id=admin_id)
+        db.add(config)
+
+    config.yape_numero      = data.yape_numero
+    config.cuenta_bcp       = data.cuenta_bcp
+    config.cuenta_bbva      = data.cuenta_bbva
+    config.qr_imagen_base64 = data.qr_imagen_base64
+    await db.commit()
+    return {"mensaje": "Medios de pago actualizados correctamente"}

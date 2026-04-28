@@ -12,6 +12,7 @@ from app.core.dependencies import get_current_user
 from app.core.config import settings
 from app.models.suscripcion import Suscripcion, PlanEnum, EstadoSuscripcionEnum
 from app.models.user import User, RolEnum
+from app.models.configuracion_pago import ConfiguracionPago
 from app.notificaciones import (
     notif_suscripcion_voucher_recibido,
     get_super_admin_id
@@ -154,14 +155,37 @@ async def get_suscripcion_activa(
 @router.get("/planes")
 async def get_planes(
     current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Devuelve los 3 planes disponibles con sus beneficios y el número de Yape.
-    Flutter usa esto para mostrar las tarjetas de suscripción.
+    Devuelve los 3 planes disponibles con sus beneficios,
+    el número de Yape y el QR del super admin para recibir pagos.
     """
+    # Leer medios de pago del super admin
+    super_admin_id = await get_super_admin_id(db)
+    yape_numero = settings.YAPE_NUMERO or ''
+    qr_imagen_base64 = None
+
+    cuenta_bcp  = None
+    cuenta_bbva = None
+    if super_admin_id:
+        config_r = await db.execute(
+            select(ConfiguracionPago).where(ConfiguracionPago.admin_id == super_admin_id)
+        )
+        config = config_r.scalar_one_or_none()
+        if config:
+            if config.yape_numero:
+                yape_numero = config.yape_numero
+            qr_imagen_base64 = config.qr_imagen_base64
+            cuenta_bcp  = config.cuenta_bcp
+            cuenta_bbva = config.cuenta_bbva
+
     return {
         "planes": list(PLANES_CATALOG.values()),
-        "yape_numero": settings.YAPE_NUMERO,
+        "yape_numero": yape_numero,
+        "qr_imagen_base64": qr_imagen_base64,
+        "cuenta_bcp": cuenta_bcp,
+        "cuenta_bbva": cuenta_bbva,
     }
 
 

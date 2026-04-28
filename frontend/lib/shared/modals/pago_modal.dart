@@ -175,7 +175,6 @@ class _PagoModalState extends State<PagoModal> {
       await ApiClient().dio.post(
         '/pagos/${widget.pagoId}/voucher',
         data: formData,
-        options: Options(contentType: 'multipart/form-data'),
       );
       setState(() => _uploading = false);
       if (mounted) {

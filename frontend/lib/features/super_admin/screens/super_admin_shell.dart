@@ -12,6 +12,7 @@ import 'package:pichangaya/features/super_admin/pages/super_admin_historial_pago
 import 'package:pichangaya/features/super_admin/pages/super_admin_alertas_page.dart';
 import 'package:pichangaya/features/super_admin/pages/super_admin_planes_page.dart';
 import 'package:pichangaya/features/super_admin/pages/super_admin_reportes_page.dart';
+import 'package:pichangaya/features/super_admin/pages/super_admin_medios_pago_page.dart';
 
 class SuperAdminShell extends StatefulWidget {
   const SuperAdminShell({super.key});
@@ -33,6 +34,7 @@ class _State extends State<SuperAdminShell> {
     {'icon': '⚠️', 'label': 'Alertas'},
     {'icon': '💎', 'label': 'Planes'},
     {'icon': '📈', 'label': 'Reportes'},
+    {'icon': '🏦', 'label': 'Medios de Pago'},
   ];
 
   List<Widget> get _pages => [
@@ -43,6 +45,7 @@ class _State extends State<SuperAdminShell> {
     const SuperAdminAlertasPage(),
     const SuperAdminPlanesPage(),
     const SuperAdminReportesPage(),
+    const SuperAdminMediosPagoPage(),
   ];
 
   @override
@@ -218,7 +221,7 @@ class _State extends State<SuperAdminShell> {
   }
 
   Widget _buildTopBar() {
-    final titles = ['📊 Dashboard', '👥 Admins', '💳 Suscripciones', '📋 Historial Pagos', '⚠️ Alertas', '💎 Planes', '📈 Reportes'];
+    final titles = ['📊 Dashboard', '👥 Admins', '💳 Suscripciones', '📋 Historial Pagos', '⚠️ Alertas', '💎 Planes', '📈 Reportes', '🏦 Medios de Pago'];
     return Container(
       height: 56,
       decoration: const BoxDecoration(
