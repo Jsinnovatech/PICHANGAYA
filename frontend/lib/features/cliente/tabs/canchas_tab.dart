@@ -797,6 +797,7 @@ class _CanchasTabState extends State<CanchasTab> {
       canchaId:        _canchaSeleccionada!.id,
       canchaName:      _canchaSeleccionada!.nombre,
       localName:       widget.localFiltro!.nombre,
+      localId:         widget.localFiltro!.id,
       fecha:           _fechaSeleccionada,
       horaInicio:      horaInicio,
       horaFin:         horaFin,

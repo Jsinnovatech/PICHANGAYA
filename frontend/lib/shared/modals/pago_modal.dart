@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -14,12 +15,14 @@ import 'package:pichangaya/shared/api/api_client.dart';
 /// - [monto]          Monto a pagar (en soles)
 /// - [metodoPago]     yape | plin | transferencia | efectivo | tarjeta
 /// - [canchaName]     Nombre de la cancha (para el encabezado)
+/// - [localId]        ID del local (para cargar medios de pago del admin dueño)
 /// - [onVoucherSubido] Callback al completar el flujo
 class PagoModal extends StatefulWidget {
   final String pagoId;
   final double monto;
   final String metodoPago;
   final String canchaName;
+  final String? localId;
   final VoidCallback onVoucherSubido;
 
   const PagoModal({
@@ -28,6 +31,7 @@ class PagoModal extends StatefulWidget {
     required this.monto,
     required this.metodoPago,
     required this.canchaName,
+    this.localId,
     required this.onVoucherSubido,
   });
 
@@ -38,6 +42,7 @@ class PagoModal extends StatefulWidget {
     required double monto,
     required String metodoPago,
     required String canchaName,
+    String? localId,
     required VoidCallback onVoucherSubido,
   }) =>
       showModalBottomSheet(
@@ -49,6 +54,7 @@ class PagoModal extends StatefulWidget {
           monto: monto,
           metodoPago: metodoPago,
           canchaName: canchaName,
+          localId: localId,
           onVoucherSubido: onVoucherSubido,
         ),
       );
@@ -68,14 +74,14 @@ class _PagoModalState extends State<PagoModal> {
   String? _error;
 
   // ── Datos de pago cargados desde el backend ───────────────────
-  static Map<String, Map<String, String>> _datosPago = {
+  Map<String, Map<String, String>> _datosPago = {
     'yape':          {'numero': 'Cargando...', 'titular': 'PichangaYa', 'icono': '📱'},
     'plin':          {'numero': 'Cargando...', 'titular': 'PichangaYa', 'icono': '💙'},
     'transferencia': {'numero': 'Cargando...', 'titular': 'PichangaYa (BCP)', 'icono': '🏦'},
     'efectivo':      {'numero': 'Paga en el local', 'titular': 'Al momento de jugar', 'icono': '💵'},
-    'tarjeta':       {'numero': 'En el local', 'titular': 'Al momento de jugar', 'icono': '💳'},
+    'tarjeta':       {'numero': 'En el local',      'titular': 'Al momento de jugar', 'icono': '💳'},
   };
-  static bool _datosCargados = false;
+  String? _qrBase64;  // QR del admin (data URL base64)
 
   @override
   void initState() {
@@ -84,23 +90,47 @@ class _PagoModalState extends State<PagoModal> {
   }
 
   Future<void> _cargarDatosPago() async {
-    if (_datosCargados) return;
     try {
-      final res = await ApiClient().dio.get('/locales/configuracion/pagos');
-      final d = res.data as Map<String, dynamic>;
-      final yape    = d['yape_numero']?.toString()  ?? '';
-      final plin    = d['plin_numero']?.toString()  ?? '';
-      final bcp     = d['cuenta_bcp']?.toString()   ?? '';
-      final titular = d['titular']?.toString()      ?? 'PichangaYa';
-      _datosPago = {
-        'yape':          {'numero': yape.isNotEmpty ? yape : '—',  'titular': titular,           'icono': '📱'},
-        'plin':          {'numero': plin.isNotEmpty ? plin : '—',  'titular': titular,           'icono': '💙'},
-        'transferencia': {'numero': bcp.isNotEmpty  ? bcp  : '—',  'titular': '$titular (BCP)', 'icono': '🏦'},
-        'efectivo':      {'numero': 'Paga en el local', 'titular': 'Al momento de jugar', 'icono': '💵'},
-        'tarjeta':       {'numero': 'En el local',      'titular': 'Al momento de jugar', 'icono': '💳'},
-      };
-      _datosCargados = true;
-      if (mounted) setState(() {});
+      final localId = widget.localId;
+      Map<String, dynamic> d;
+
+      if (localId != null && localId.isNotEmpty) {
+        // Cargar medios de pago específicos del admin dueño del local
+        final res = await ApiClient().dio.get('/locales/$localId/medios-pago');
+        d = res.data as Map<String, dynamic>;
+        final yape = d['yape_numero']?.toString() ?? '';
+        final bcp  = d['cuenta_bcp']?.toString()  ?? '';
+        final bbva = d['cuenta_bbva']?.toString()  ?? '';
+        _qrBase64  = d['qr_imagen_base64'] as String?;
+        if (!mounted) return;
+        setState(() {
+          _datosPago = {
+            'yape':          {'numero': yape.isNotEmpty ? yape : '—', 'titular': '', 'icono': '📱'},
+            'plin':          {'numero': yape.isNotEmpty ? yape : '—', 'titular': '', 'icono': '💙'},
+            'transferencia': {'numero': bcp.isNotEmpty  ? bcp  : (bbva.isNotEmpty ? bbva : '—'), 'titular': '', 'icono': '🏦'},
+            'efectivo':      {'numero': 'Paga en el local', 'titular': 'Al momento de jugar', 'icono': '💵'},
+            'tarjeta':       {'numero': 'En el local',      'titular': 'Al momento de jugar', 'icono': '💳'},
+          };
+        });
+      } else {
+        // Fallback: endpoint global antiguo
+        final res = await ApiClient().dio.get('/locales/configuracion/pagos');
+        d = res.data as Map<String, dynamic>;
+        final yape    = d['yape_numero']?.toString() ?? '';
+        final plin    = d['plin_numero']?.toString()  ?? '';
+        final bcp     = d['cuenta_bcp']?.toString()   ?? '';
+        final titular = d['titular']?.toString()       ?? 'PichangaYa';
+        if (!mounted) return;
+        setState(() {
+          _datosPago = {
+            'yape':          {'numero': yape.isNotEmpty ? yape : '—', 'titular': titular,          'icono': '📱'},
+            'plin':          {'numero': plin.isNotEmpty ? plin : '—', 'titular': titular,          'icono': '💙'},
+            'transferencia': {'numero': bcp.isNotEmpty  ? bcp  : '—', 'titular': '$titular (BCP)', 'icono': '🏦'},
+            'efectivo':      {'numero': 'Paga en el local', 'titular': 'Al momento de jugar', 'icono': '💵'},
+            'tarjeta':       {'numero': 'En el local',      'titular': 'Al momento de jugar', 'icono': '💳'},
+          };
+        });
+      }
     } catch (e) {
       debugPrint('[PagoModal] No se pudieron cargar datos de pago: $e');
     }
@@ -206,9 +236,10 @@ class _PagoModalState extends State<PagoModal> {
             _MontoCard(
               icono:   datos['icono']!,
               numero:  datos['numero']!,
-              titular: datos['titular']!,
+              titular: datos['titular'] ?? '',
               monto:   widget.monto,
               esPagoLocal: _esPagoLocal,
+              qrBase64: _qrBase64,
             ),
             const SizedBox(height: 16),
             if (_esPagoLocal) ...[
@@ -300,54 +331,78 @@ class _MontoCard extends StatelessWidget {
     required this.titular,
     required this.monto,
     required this.esPagoLocal,
+    this.qrBase64,
   });
 
-  final String icono;
-  final String numero;
-  final String titular;
-  final double monto;
-  final bool   esPagoLocal;
+  final String  icono;
+  final String  numero;
+  final String  titular;
+  final double  monto;
+  final bool    esPagoLocal;
+  final String? qrBase64;
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppColors.negro3,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.borde),
-        ),
-        child: Column(
-          children: [
-            Text(icono, style: const TextStyle(fontSize: 40)),
-            const SizedBox(height: 8),
-            Text(
-              esPagoLocal ? 'Paga al llegar:' : 'Envía el pago a:',
-              style: const TextStyle(fontSize: 12, color: AppColors.texto2),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              numero,
-              style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white),
-            ),
+  Widget build(BuildContext context) {
+    // Decodificar QR si existe
+    Uint8List? qrBytes;
+    if (qrBase64 != null && qrBase64!.contains(',')) {
+      try { qrBytes = base64Decode(qrBase64!.split(',').last); } catch (_) {}
+    } else if (qrBase64 != null && qrBase64!.isNotEmpty) {
+      try { qrBytes = base64Decode(qrBase64!); } catch (_) {}
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.negro3,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borde),
+      ),
+      child: Column(
+        children: [
+          Text(icono, style: const TextStyle(fontSize: 40)),
+          const SizedBox(height: 8),
+          Text(
+            esPagoLocal ? 'Paga al llegar:' : 'Envía el pago a:',
+            style: const TextStyle(fontSize: 12, color: AppColors.texto2),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            numero,
+            style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: Colors.white),
+          ),
+          if (titular.isNotEmpty)
             Text(
               titular,
               style: const TextStyle(fontSize: 12, color: AppColors.texto2),
             ),
-            const SizedBox(height: 10),
-            Text(
-              'S/ ${monto.toStringAsFixed(2)}',
-              style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.verde),
+          // ── QR Image ──────────────────────────────────────
+          if (!esPagoLocal && qrBytes != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(qrBytes, width: 160, height: 160, fit: BoxFit.contain),
             ),
+            const SizedBox(height: 4),
+            const Text('Escanea el QR para pagar',
+                style: TextStyle(fontSize: 11, color: AppColors.texto2)),
           ],
-        ),
-      );
+          const SizedBox(height: 10),
+          Text(
+            'S/ ${monto.toStringAsFixed(2)}',
+            style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: AppColors.verde),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Mensaje informativo para pagos en efectivo o tarjeta.

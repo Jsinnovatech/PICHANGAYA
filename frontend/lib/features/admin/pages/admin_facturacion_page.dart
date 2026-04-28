@@ -200,12 +200,27 @@ class _State extends State<AdminFacturacionPage> {
               style: const TextStyle(fontSize: 11, color: AppColors.texto2,
                   fontWeight: FontWeight.w600)),
           const Spacer(),
+          if (e['es_manual'] == true) ...[
+            Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.orange.withOpacity(0.5)),
+              ),
+              child: const Text('MANUAL', style: TextStyle(fontSize: 9, color: Colors.orange, fontWeight: FontWeight.w700)),
+            ),
+          ],
           _badgeTipoDoc(tipoDoc),
         ]),
         const SizedBox(height: 6),
         Text(e['cliente_nombre'] ?? '—',
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
                 color: Colors.white)),
+        if (e['dni_cliente'] != null && (e['dni_cliente'] as String).isNotEmpty)
+          Text('DNI: ${e['dni_cliente']}',
+              style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         Text('+51 ${e['cliente_celular'] ?? ''}',
             style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         const SizedBox(height: 6),

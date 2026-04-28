@@ -22,6 +22,7 @@ class ReservaModal extends StatefulWidget {
   final String canchaId;
   final String canchaName;
   final String localName;
+  final String? localId;
   final DateTime fecha;
   final String horaInicio;
   final String horaFin;
@@ -36,6 +37,7 @@ class ReservaModal extends StatefulWidget {
     required this.canchaId,
     required this.canchaName,
     required this.localName,
+    this.localId,
     required this.fecha,
     required this.horaInicio,
     required this.horaFin,
@@ -52,6 +54,7 @@ class ReservaModal extends StatefulWidget {
     required String canchaId,
     required String canchaName,
     required String localName,
+    String? localId,
     required DateTime fecha,
     required String horaInicio,
     required String horaFin,
@@ -69,6 +72,7 @@ class ReservaModal extends StatefulWidget {
           canchaId: canchaId,
           canchaName: canchaName,
           localName: localName,
+          localId: localId,
           fecha: fecha,
           horaInicio: horaInicio,
           horaFin: horaFin,
@@ -164,6 +168,7 @@ class _ReservaModalState extends State<ReservaModal> {
         monto: widget.precioTotal,
         metodoPago: _metodoPago,
         canchaName: widget.canchaName,
+        localId: widget.localId,
         onVoucherSubido: widget.onReservado,
       );
     } on DioException catch (e) {

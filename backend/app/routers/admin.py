@@ -18,6 +18,7 @@ from app.models.local import Local
 from app.models.horario import HorarioDisponible
 from app.models.bloqueo import BloqueoHorario
 from app.models.comprobante import Comprobante, EstadoComprobanteEnum
+from app.models.configuracion_pago import ConfiguracionPago
 from app.notificaciones import notif_reserva_confirmada, notif_reserva_rechazada
 from app.schemas.admin import (
     ReservaAdminResponse,
@@ -38,6 +39,8 @@ from app.schemas.admin import (
     LocalUpdateRequest,
     BloqueoCreateRequest,
     BloqueoResponse,
+    MediosPagoResponse,
+    MediosPagoRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -311,10 +314,21 @@ async def admin_get_reservas(
             local   = locales_map.get(cancha.local_id) if cancha else None
             pago    = pagos_map.get(reserva.id)
 
+                # Detectar reservas manuales via campo notas JSON
+            notas_data: dict = {}
+            if reserva.notas:
+                try:
+                    notas_data = json.loads(reserva.notas) if isinstance(reserva.notas, str) else {}
+                except Exception:
+                    notas_data = {}
+            es_manual = notas_data.get("manual", False) is True
+            nombre_manual = notas_data.get("nombre_cliente")
+            dni_manual = notas_data.get("dni_cliente")
+
             respuesta.append(ReservaAdminResponse(
                 id=reserva.id,
                 codigo=reserva.codigo,
-                cliente_nombre=cliente.nombre if cliente else "Desconocido",
+                cliente_nombre=nombre_manual if es_manual and nombre_manual else (cliente.nombre if cliente else "Desconocido"),
                 cliente_celular=cliente.celular if cliente else "",
                 cancha_nombre=cancha.nombre if cancha else None,
                 local_nombre=local.nombre if local else None,
@@ -327,7 +341,9 @@ async def admin_get_reservas(
                 metodo_pago=pago.metodo.value if pago else None,
                 voucher_url=pago.voucher_url if pago else None,
                 pago_estado=pago.estado.value if pago else None,
-                pago_id=pago.id if pago else None
+                pago_id=pago.id if pago else None,
+                es_manual=es_manual,
+                dni_cliente=dni_manual if es_manual else (cliente.dni if cliente else None),
             ))
         except Exception as e:
             logger.error(f"Error procesando reserva {reserva.id}: {e}", exc_info=True)
@@ -919,9 +935,20 @@ async def admin_get_facturacion(
         cancha  = canchas_map.get(reserva.cancha_id)
         comp    = comprobantes_map.get(reserva.id)
 
+        # Detectar reservas manuales via campo notas JSON
+        notas_data_f: dict = {}
+        if reserva.notas:
+            try:
+                notas_data_f = json.loads(reserva.notas) if isinstance(reserva.notas, str) else {}
+            except Exception:
+                notas_data_f = {}
+        es_manual_f = notas_data_f.get("manual", False) is True
+        nombre_manual_f = notas_data_f.get("nombre_cliente")
+        dni_manual_f = notas_data_f.get("dni_cliente")
+
         respuesta.append(FacturacionItemResponse(
             reserva_id=reserva.id, codigo=reserva.codigo,
-            cliente_nombre=cliente.nombre if cliente else "—",
+            cliente_nombre=nombre_manual_f if es_manual_f and nombre_manual_f else (cliente.nombre if cliente else "—"),
             cliente_celular=cliente.celular if cliente else "",
             cancha_nombre=cancha.nombre if cancha else None,
             fecha=reserva.fecha, monto=float(pago.monto),
@@ -933,7 +960,9 @@ async def admin_get_facturacion(
             comprobante_serie=comp.serie if comp else None,
             comprobante_numero=comp.numero if comp else None,
             pdf_url=comp.pdf_url if comp else None,
-            fecha_pago=str(pago.created_at.date()) if pago.created_at else None
+            fecha_pago=str(pago.created_at.date()) if pago.created_at else None,
+            es_manual=es_manual_f,
+            dni_cliente=dni_manual_f if es_manual_f else (cliente.dni if cliente else None),
         ))
     return respuesta
 
@@ -1167,11 +1196,20 @@ async def get_disponibilidad_canchas(
                 ))
                 current += 60
 
+        # Calcular precio día (06:00-18:00) y noche (18:00-00:00) como referencia
+        precios_slots = [float(h.precio_override) if h.precio_override else precio_base for h in horarios]
+        precios_dia    = [float(h.precio_override) if h.precio_override else precio_base
+                          for h in horarios if h.hora_inicio.hour < 18]
+        precios_noche  = [float(h.precio_override) if h.precio_override else precio_base
+                          for h in horarios if h.hora_inicio.hour >= 18]
+
         resultado.append(CanchaDisponibilidadResponse(
             cancha_id=cancha.id,
             cancha_nombre=cancha.nombre,
             tipo_piso=cancha.tipo_piso if hasattr(cancha, 'tipo_piso') else None,
             precio_hora=precio_base,
+            precio_dia=min(precios_dia) if precios_dia else None,
+            precio_noche=min(precios_noche) if precios_noche else None,
             slots=slots
         ))
 
@@ -1433,3 +1471,63 @@ async def admin_eliminar_bloqueo(
 
     await db.delete(bloqueo)
     await db.commit()
+
+
+# ══════════════════════════════════════════════
+# MEDIOS DE PAGO — configuración por admin
+# ══════════════════════════════════════════════
+
+@router.get("/medios-pago", response_model=MediosPagoResponse)
+async def admin_get_medios_pago(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Devuelve la configuración de medios de pago del admin autenticado."""
+    admin_uuid = uuid.UUID(current_user["id"])
+    result = await db.execute(
+        select(ConfiguracionPago).where(ConfiguracionPago.admin_id == admin_uuid)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        return MediosPagoResponse()
+    return MediosPagoResponse(
+        yape_numero=config.yape_numero,
+        qr_imagen_base64=config.qr_imagen_base64,
+        cuenta_bcp=config.cuenta_bcp,
+        cuenta_bbva=config.cuenta_bbva,
+    )
+
+
+@router.put("/medios-pago", response_model=MediosPagoResponse)
+async def admin_put_medios_pago(
+    data: MediosPagoRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Crea o actualiza la configuración de medios de pago del admin."""
+    admin_uuid = uuid.UUID(current_user["id"])
+    result = await db.execute(
+        select(ConfiguracionPago).where(ConfiguracionPago.admin_id == admin_uuid)
+    )
+    config = result.scalar_one_or_none()
+
+    if config is None:
+        config = ConfiguracionPago(admin_id=admin_uuid)
+        db.add(config)
+
+    config.yape_numero = data.yape_numero
+    config.cuenta_bcp = data.cuenta_bcp
+    config.cuenta_bbva = data.cuenta_bbva
+    # Solo actualizar QR si se envía un valor (None = sin cambios, "" = borrar)
+    if data.qr_imagen_base64 is not None:
+        config.qr_imagen_base64 = data.qr_imagen_base64 if data.qr_imagen_base64 else None
+
+    await db.commit()
+    await db.refresh(config)
+
+    return MediosPagoResponse(
+        yape_numero=config.yape_numero,
+        qr_imagen_base64=config.qr_imagen_base64,
+        cuenta_bcp=config.cuenta_bcp,
+        cuenta_bbva=config.cuenta_bbva,
+    )

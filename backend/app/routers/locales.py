@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 from math import radians, cos, sin, asin, sqrt
 from typing import Optional, List
 from datetime import date, time
-import uuid
+import uuid  # noqa: F401 (used in path param type hints)
 
 from app.core.database import get_db
 from app.models.local import Local
@@ -12,6 +12,7 @@ from app.models.cancha import Cancha
 from app.models.horario import HorarioDisponible
 from app.models.reserva import Reserva, EstadoReservaEnum
 from app.models.configuracion import Configuracion
+from app.models.configuracion_pago import ConfiguracionPago
 from app.schemas.locales import LocalResponse, CanchaResponse, SlotDisponibilidad
 
 router = APIRouter(prefix="/locales", tags=["Locales"])
@@ -28,6 +29,28 @@ async def get_datos_pago(db: AsyncSession = Depends(get_db)):
         "cuenta_bcp":    config.cuenta_bcp    if config else None,
         "cuenta_bbva":   config.cuenta_bbva   if config else None,
         "titular":       config.razon_social  if config else "PichangaYa",
+    }
+
+
+@router.get("/{local_id}/medios-pago")
+async def get_medios_pago_local(local_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Devuelve los medios de pago configurados por el admin dueño del local (sin auth)."""
+    # Obtener el admin_id del local
+    local_r = await db.execute(select(Local).where(Local.id == local_id))
+    local = local_r.scalar_one_or_none()
+    if not local:
+        raise HTTPException(status_code=404, detail="Local no encontrado")
+
+    config_r = await db.execute(
+        select(ConfiguracionPago).where(ConfiguracionPago.admin_id == local.admin_id)
+    )
+    config = config_r.scalar_one_or_none()
+
+    return {
+        "yape_numero":      config.yape_numero      if config else None,
+        "qr_imagen_base64": config.qr_imagen_base64 if config else None,
+        "cuenta_bcp":       config.cuenta_bcp       if config else None,
+        "cuenta_bbva":      config.cuenta_bbva      if config else None,
     }
 
 

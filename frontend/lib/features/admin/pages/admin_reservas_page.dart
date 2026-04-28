@@ -211,11 +211,26 @@ class _State extends State<AdminReservasPage> {
             Text(r['codigo'] ?? '—',
                 style: const TextStyle(fontSize: 12, color: AppColors.texto2, fontWeight: FontWeight.w600)),
             const Spacer(),
+            if (r['es_manual'] == true) ...[
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                ),
+                child: const Text('MANUAL', style: TextStyle(fontSize: 9, color: Colors.orange, fontWeight: FontWeight.w700)),
+              ),
+            ],
             _badgeEstado(estado),
           ]),
           const SizedBox(height: 8),
           Text(r['cliente_nombre'] ?? '—',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+          if (r['dni_cliente'] != null && (r['dni_cliente'] as String).isNotEmpty)
+            Text('DNI: ${r['dni_cliente']}',
+                style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
           Text('${r['cancha_nombre'] ?? ''} · ${r['local_nombre'] ?? ''}',
               style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
           const SizedBox(height: 8),
