@@ -66,7 +66,13 @@ class CanchaResponse(BaseModel):
     # Número de jugadores — ej: 10, 12, 14
 
     precio_hora: float
-    # Precio en soles por hora
+    # Precio en soles por hora (base)
+
+    precio_dia: Optional[float] = None
+    # Precio mínimo en horario diurno (06:00–17:59)
+
+    precio_noche: Optional[float] = None
+    # Precio mínimo en horario nocturno (18:00–23:59)
 
     superficie: Optional[str] = None
     # "Gras Sintético" | "Piso Madera" | "Cemento"

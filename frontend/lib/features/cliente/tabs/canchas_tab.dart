@@ -269,9 +269,18 @@ class _CanchasTabState extends State<CanchasTab> {
           ]),
         ])),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('S/.${cancha.precioHora.toStringAsFixed(0)}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.verde)),
-          const Text('/hora', style: TextStyle(fontSize: 10, color: AppColors.texto2)),
+          if (cancha.precioDia != null || cancha.precioNoche != null) ...[
+            if (cancha.precioDia != null)
+              Text('☀️ S/.${cancha.precioDia!.toStringAsFixed(0)}/h',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFFFC107))),
+            if (cancha.precioNoche != null)
+              Text('🌙 S/.${cancha.precioNoche!.toStringAsFixed(0)}/h',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF7986CB))),
+          ] else ...[
+            Text('S/.${cancha.precioHora.toStringAsFixed(0)}',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.verde)),
+            const Text('/hora', style: TextStyle(fontSize: 10, color: AppColors.texto2)),
+          ],
         ]),
         const SizedBox(width: 8),
         Icon(sel ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,

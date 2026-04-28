@@ -135,14 +135,45 @@ async def get_canchas_por_local(
     if not local:
         raise HTTPException(status_code=404, detail="Local no encontrado")
 
-    # Traer canchas activas del local — UNA sola query
+    # Traer canchas activas del local
     result = await db.execute(
         select(Cancha).where(
             Cancha.local_id == local_id,
             Cancha.activa == True
         )
     )
-    return result.scalars().all()
+    canchas = result.scalars().all()
+
+    # Calcular precio_dia / precio_noche por cancha desde HorarioDisponible
+    respuesta = []
+    for cancha in canchas:
+        horarios_res = await db.execute(
+            select(HorarioDisponible).where(
+                HorarioDisponible.cancha_id == cancha.id,
+                HorarioDisponible.activo == True
+            )
+        )
+        horarios = horarios_res.scalars().all()
+
+        precios_dia = [float(h.precio_override or cancha.precio_hora)
+                       for h in horarios if h.hora_inicio.hour < 18]
+        precios_noche = [float(h.precio_override or cancha.precio_hora)
+                         for h in horarios if h.hora_inicio.hour >= 18]
+
+        respuesta.append(CanchaResponse(
+            id=cancha.id,
+            local_id=cancha.local_id,
+            nombre=cancha.nombre,
+            capacidad=cancha.capacidad,
+            precio_hora=float(cancha.precio_hora),
+            precio_dia=min(precios_dia) if precios_dia else None,
+            precio_noche=min(precios_noche) if precios_noche else None,
+            superficie=cancha.superficie,
+            foto_url=cancha.foto_url,
+            activa=cancha.activa,
+        ))
+
+    return respuesta
 
 
 @router.get("/{local_id}/canchas/{cancha_id}/disponibilidad", response_model=List[SlotDisponibilidad])

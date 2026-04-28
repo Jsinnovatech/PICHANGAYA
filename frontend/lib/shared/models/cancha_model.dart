@@ -5,6 +5,8 @@ class CanchaModel {
   final String nombre;
   final int capacidad;
   final double precioHora;
+  final double? precioDia;   // Precio mínimo horario diurno (06:00–17:59)
+  final double? precioNoche; // Precio mínimo horario nocturno (18:00–23:59)
   final String? superficie; // 'Gras Sintético' | 'Piso Madera' | 'Cemento'
   final String? fotoUrl;
   final bool activa;
@@ -15,6 +17,8 @@ class CanchaModel {
     required this.nombre,
     required this.capacidad,
     required this.precioHora,
+    this.precioDia,
+    this.precioNoche,
     this.superficie,
     this.fotoUrl,
     required this.activa,
@@ -26,6 +30,8 @@ class CanchaModel {
         nombre: j['nombre'],
         capacidad: j['capacidad'],
         precioHora: (j['precio_hora'] as num).toDouble(),
+        precioDia: j['precio_dia'] != null ? (j['precio_dia'] as num).toDouble() : null,
+        precioNoche: j['precio_noche'] != null ? (j['precio_noche'] as num).toDouble() : null,
         superficie: j['superficie'],
         fotoUrl: j['foto_url'],
         activa: j['activa'] ?? true,
