@@ -674,12 +674,44 @@ async def admin_get_canchas(
         .order_by(Cancha.created_at.desc())
     )
     filas = result.all()
+    if not filas:
+        return []
+
+    # Cargar horarios de todas las canchas en una sola query
+    cancha_ids = [c.id for c, _ in filas]
+    horarios_r = await db.execute(
+        select(HorarioDisponible).where(
+            HorarioDisponible.cancha_id.in_(cancha_ids),
+            HorarioDisponible.activo == True,
+            HorarioDisponible.precio_override.isnot(None)
+        )
+    )
+    horarios_all = horarios_r.scalars().all()
+
+    # Agrupar por cancha_id
+    from collections import defaultdict
+    horarios_map = defaultdict(list)
+    for h in horarios_all:
+        horarios_map[h.cancha_id].append(h)
+
+    def _calcular_precios(cancha_id, precio_base):
+        horarios = horarios_map.get(cancha_id, [])
+        precios_dia = [float(h.precio_override) for h in horarios
+                       if h.hora_inicio.hour < 18 and h.precio_override is not None]
+        precios_noche = [float(h.precio_override) for h in horarios
+                         if h.hora_inicio.hour >= 18 and h.precio_override is not None]
+        pd = min(precios_dia) if precios_dia else None
+        pn = min(precios_noche) if precios_noche else None
+        return pd, pn
+
     return [
         CanchaAdminResponse(
             id=c.id, local_id=c.local_id,
             local_nombre=local_nombre,
             nombre=c.nombre, descripcion=c.descripcion,
             capacidad=c.capacidad, precio_hora=float(c.precio_hora),
+            precio_dia=_calcular_precios(c.id, float(c.precio_hora))[0],
+            precio_noche=_calcular_precios(c.id, float(c.precio_hora))[1],
             superficie=c.superficie, activa=c.activa
         )
         for c, local_nombre in filas
@@ -772,6 +804,19 @@ async def admin_actualizar_cancha(
     if data.capacidad is not None: cancha.capacidad = data.capacidad
     if data.precio_hora is not None: cancha.precio_hora = data.precio_hora
     if data.superficie is not None: cancha.superficie = data.superficie
+
+    # Actualizar precio_override en horarios según franja día/noche
+    if data.precio_dia is not None or data.precio_noche is not None:
+        horarios_r = await db.execute(
+            select(HorarioDisponible).where(HorarioDisponible.cancha_id == cancha.id)
+        )
+        horarios = horarios_r.scalars().all()
+        for h in horarios:
+            if data.precio_dia is not None and h.hora_inicio.hour < 18:
+                h.precio_override = data.precio_dia
+            if data.precio_noche is not None and h.hora_inicio.hour >= 18:
+                h.precio_override = data.precio_noche
+
     await db.commit()
     return {"mensaje": "Cancha actualizada"}
 

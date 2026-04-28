@@ -208,6 +208,8 @@ class CanchaAdminResponse(BaseModel):
     descripcion: Optional[str] = None
     capacidad: int
     precio_hora: float
+    precio_dia: Optional[float] = None
+    precio_noche: Optional[float] = None
     superficie: Optional[str] = None
     activa: bool
 
@@ -250,6 +252,8 @@ class CanchaUpdateRequest(BaseModel):
     descripcion: Optional[str] = None
     capacidad: Optional[int] = None
     precio_hora: Optional[float] = None
+    precio_dia: Optional[float] = None
+    precio_noche: Optional[float] = None
     superficie: Optional[str] = None
 
     @field_validator("capacidad")

@@ -40,7 +40,7 @@ class ApiConstants {
   static const String disponibilidad = '/canchas/{id}/disponibilidad';
 
   // Reservas
-  static const String reservas = '/reservas';
+  static const String reservas = '/reservas/';
   static const String misReservas = '/reservas/mis-reservas';
 
   // Pagos

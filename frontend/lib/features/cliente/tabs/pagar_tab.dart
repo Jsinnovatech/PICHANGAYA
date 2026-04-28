@@ -23,19 +23,20 @@ class _PagarTabState extends State<PagarTab> {
   String? _exito;
   String? _errorSubida;
 
+  final PageController _pageCtrl = PageController();
   int _page = 0;
-  static const double _overhead   = 210.0; // appbar + bottomnav + header + paginacion
-  static const double _cardHeight = 110.0; // card colapsado + margen
-
-  int _pageSize(BuildContext ctx) {
-    final available = MediaQuery.of(ctx).size.height - _overhead;
-    return (available / _cardHeight).floor().clamp(2, 20);
-  }
+  static const int _pageSize = 4;
 
   @override
   void initState() {
     super.initState();
     _cargarPagos();
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _cargarPagos() async {
@@ -47,6 +48,7 @@ class _PagarTabState extends State<PagarTab> {
         _loading = false;
         _page = 0;
       });
+      if (_pageCtrl.hasClients) _pageCtrl.jumpToPage(0);
     } catch (e) {
       debugPrint('[PagarTab] Error al cargar pagos: $e');
       setState(() { _error = 'Ocurrió un error. Intenta de nuevo.'; _loading = false; });
@@ -103,10 +105,8 @@ class _PagarTabState extends State<PagarTab> {
         ElevatedButton(onPressed: _cargarPagos, child: const Text('Reintentar')),
       ]));
 
-    final ps    = _pageSize(context);
-    final total = (_pagos.length / ps).ceil();
+    final total = (_pagos.length / _pageSize).ceil();
     final page  = _page.clamp(0, total > 0 ? total - 1 : 0);
-    final items = _pagos.skip(page * ps).take(ps).toList();
 
     return Column(children: [
       // ── Header ─────────────────────────────────────────────────
@@ -146,7 +146,7 @@ class _PagarTabState extends State<PagarTab> {
           ),
         ),
 
-      // ── Lista paginada ──────────────────────────────────────────
+      // ── Carrusel PageView ───────────────────────────────────────
       if (_pagos.isEmpty)
         const Expanded(child: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -161,22 +161,54 @@ class _PagarTabState extends State<PagarTab> {
         ))
       else
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: _cargarPagos,
-            color: AppColors.verde,
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-              itemCount: items.length,
-              itemBuilder: (_, i) => _cardPago(items[i]),
-            ),
+          child: PageView.builder(
+            controller: _pageCtrl,
+            itemCount: total,
+            onPageChanged: (p) => setState(() {
+              _page = p;
+              _pagoSeleccionado = null;
+              _imagenBytes = null;
+            }),
+            itemBuilder: (_, pageIdx) {
+              final items = _pagos.skip(pageIdx * _pageSize).take(_pageSize).toList();
+              return RefreshIndicator(
+                onRefresh: _cargarPagos,
+                color: AppColors.verde,
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => _cardPago(items[i]),
+                ),
+              );
+            },
           ),
         ),
 
-      // ── Paginación ──────────────────────────────────────────────
+      // ── Dots indicadores de página ──────────────────────────────
       if (total > 1) ...[
-        _paginacion(total, page),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _arrowBtn(Icons.arrow_back_ios_new, page > 0, () {
+            _pageCtrl.previousPage(
+                duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+          }),
+          ...List.generate(total, (i) => AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            width: i == page ? 20 : 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: i == page ? AppColors.verde : AppColors.borde,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          )),
+          _arrowBtn(Icons.arrow_forward_ios, page < total - 1, () {
+            _pageCtrl.nextPage(
+                duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+          }),
+        ]),
+        const SizedBox(height: 10),
       ],
     ]);
   }
@@ -407,38 +439,6 @@ class _PagarTabState extends State<PagarTab> {
       ),
     );
   }
-
-  Widget _paginacion(int total, int current) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      _arrowBtn(Icons.arrow_back_ios_new, current > 0,
-          () => setState(() { _page = current - 1; _pagoSeleccionado = null; })),
-      ...List.generate(total > 9 ? 0 : total, (i) => _pageNum(i, current)),
-      if (total > 9) Text('${current + 1} / $total',
-          style: const TextStyle(color: AppColors.verde, fontSize: 14, fontWeight: FontWeight.w700)),
-      _arrowBtn(Icons.arrow_forward_ios, current < total - 1,
-          () => setState(() { _page = current + 1; _pagoSeleccionado = null; })),
-    ]),
-  );
-
-  Widget _pageNum(int i, int current) => GestureDetector(
-    onTap: () => setState(() { _page = i; _pagoSeleccionado = null; }),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      margin: const EdgeInsets.symmetric(horizontal: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: i == current ? AppColors.verde.withOpacity(0.15) : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: i == current ? AppColors.verde : Colors.transparent),
-      ),
-      child: Text('${i + 1}', style: TextStyle(
-        fontSize: 13,
-        fontWeight: i == current ? FontWeight.w700 : FontWeight.normal,
-        color: i == current ? AppColors.verde : AppColors.texto2,
-      )),
-    ),
-  );
 
   Widget _arrowBtn(IconData icon, bool enabled, VoidCallback onTap) => GestureDetector(
     onTap: enabled ? onTap : null,
