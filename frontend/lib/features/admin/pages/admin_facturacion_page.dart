@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pichangaya/core/theme/app_colors.dart';
 import 'package:pichangaya/shared/api/api_client.dart';
 
@@ -243,26 +244,91 @@ class _State extends State<AdminFacturacionPage> {
                 style: const TextStyle(fontSize: 10, color: AppColors.texto2)),
           ],
         ]),
-        if (e['pdf_url'] != null) ...[
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('PDF: ${e['pdf_url']}'),
-              backgroundColor: AppColors.azul,
-            )),
-            child: const Text('📄 Ver PDF',
-                style: TextStyle(fontSize: 12, color: AppColors.azul,
-                    decoration: TextDecoration.underline)),
-          ),
-        ] else ...[
-          const SizedBox(height: 6),
-          const Text('⏳ Integración SUNAT Fase 4',
-              style: TextStyle(fontSize: 11, color: AppColors.texto2,
-                  fontStyle: FontStyle.italic)),
-        ],
+        const SizedBox(height: 10),
+        Row(children: [
+          _accionBtn(Icons.picture_as_pdf_outlined, 'PDF',       AppColors.azul,    () => _exportarPdf(e)),
+          const SizedBox(width: 8),
+          _accionBtn(Icons.share_outlined,          'Compartir', AppColors.verde,   () => _compartir(e)),
+          const SizedBox(width: 8),
+          _accionBtn(Icons.print_outlined,          'Imprimir',  AppColors.texto2,  () => _imprimir(e)),
+        ]),
       ]),
     );
   }
+
+  // ── Acciones del comprobante ─────────────────────────────────
+
+  void _exportarPdf(Map<String, dynamic> e) {
+    final pdfUrl = e['pdf_url'] as String?;
+    if (pdfUrl != null && pdfUrl.isNotEmpty) {
+      Clipboard.setData(ClipboardData(text: pdfUrl));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('URL del PDF copiada: $pdfUrl'),
+        backgroundColor: AppColors.azul,
+        duration: const Duration(seconds: 3),
+      ));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('📄 PDF disponible cuando se active SUNAT (Fase 4)'),
+        backgroundColor: AppColors.azul,
+        duration: Duration(seconds: 2),
+      ));
+    }
+  }
+
+  void _compartir(Map<String, dynamic> e) {
+    final metodoLabel = switch (e['metodo_pago'] as String?) {
+      'yape'          => 'Yape',
+      'plin'          => 'Plin',
+      'transferencia' => 'Transferencia',
+      'efectivo'      => 'Efectivo',
+      'tarjeta'       => 'Tarjeta',
+      _               => e['metodo_pago']?.toString().toUpperCase() ?? '—',
+    };
+    final texto = '''🏟️ Comprobante PichangaYa
+Código: ${e['codigo'] ?? '—'}
+Cliente: ${e['cliente_nombre'] ?? '—'}
+DNI: ${e['dni_cliente'] ?? '—'}
+Tel: +51 ${e['cliente_celular'] ?? '—'}
+Cancha: ${e['cancha_nombre'] ?? '—'} · ${e['fecha'] ?? '—'}
+Monto: S/.${(e['monto'] ?? 0.0).toStringAsFixed(2)}
+Método: $metodoLabel
+Tipo: ${e['tipo_doc']?.toString().toUpperCase() ?? 'SIN TIPO'}''';
+
+    Clipboard.setData(ClipboardData(text: texto));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('📋 Datos del comprobante copiados al portapapeles'),
+      backgroundColor: AppColors.verde,
+      duration: Duration(seconds: 2),
+    ));
+  }
+
+  void _imprimir(Map<String, dynamic> e) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('🖨️ Impresión disponible con integración SUNAT (Fase 4)'),
+      backgroundColor: AppColors.texto2,
+      duration: Duration(seconds: 2),
+    ));
+  }
+
+  Widget _accionBtn(IconData icon, String label, Color color, VoidCallback onTap) =>
+    GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(
+              fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
 
   Widget _paginacion(int total, int current) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),

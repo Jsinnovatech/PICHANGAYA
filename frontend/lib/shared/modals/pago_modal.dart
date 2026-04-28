@@ -49,6 +49,7 @@ class PagoModal extends StatefulWidget {
         context: context,
         backgroundColor: Colors.transparent,
         isScrollControlled: true,
+        useSafeArea: true,
         builder: (_) => PagoModal(
           pagoId: pagoId,
           monto: monto,
@@ -215,7 +216,9 @@ class _PagoModalState extends State<PagoModal> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom +
+                20,
         left: 20,
         right: 20,
         top: 16,

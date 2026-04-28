@@ -68,6 +68,7 @@ class ReservaModal extends StatefulWidget {
         context: context,
         backgroundColor: Colors.transparent,
         isScrollControlled: true,
+        useSafeArea: true,
         builder: (_) => ReservaModal(
           canchaId: canchaId,
           canchaName: canchaName,
@@ -172,29 +173,35 @@ class _ReservaModalState extends State<ReservaModal> {
         onVoucherSubido: widget.onReservado,
       );
     } on DioException catch (e) {
-      debugPrint('[ReservaModal] DioException: ${e.response?.statusCode} ${e.message}');
+      debugPrint('[ReservaModal] DioException type=${e.type} status=${e.response?.statusCode} msg=${e.message}');
       final data   = e.response?.data;
       final status = e.response?.statusCode;
       String msg;
       if (status == 409) {
         msg = 'Este horario ya fue reservado. Elige otro.';
-      } else if (status == 400) {
-        msg = data is Map
-            ? (data['detail'] ?? 'Datos inválidos').toString()
-            : 'Datos inválidos';
+      } else if (status == 400 || status == 422) {
+        final detail = data is Map ? data['detail'] : null;
+        msg = detail != null ? detail.toString() : 'Datos inválidos. Verifica los campos.';
       } else if (status == 401) {
         msg = 'Sesión expirada. Vuelve a iniciar sesión.';
       } else if (data is Map && data['detail'] != null) {
         msg = data['detail'].toString();
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+                 e.type == DioExceptionType.sendTimeout) {
+        msg = 'El servidor tardó en responder. Intenta de nuevo.';
+      } else if (e.type == DioExceptionType.receiveTimeout) {
+        msg = 'El servidor demoró en procesar la reserva. Verifica en "Mis reservas" si fue creada.';
+      } else if (e.type == DioExceptionType.connectionError) {
+        msg = 'Sin internet. Verifica tu conexión y vuelve a intentarlo.';
       } else {
-        msg = 'Sin conexión. Intenta de nuevo.';
+        msg = 'Error (${e.type.name}): ${e.message ?? "Intenta de nuevo"}';
       }
       if (!mounted) return;
       setState(() { _error = msg; _loading = false; });
     } catch (e) {
       debugPrint('[ReservaModal] Error inesperado: $e');
       if (!mounted) return;
-      setState(() { _error = 'Sin conexión. Intenta de nuevo.'; _loading = false; });
+      setState(() { _error = 'Error inesperado: $e'; _loading = false; });
     }
   }
 
@@ -208,7 +215,9 @@ class _ReservaModalState extends State<ReservaModal> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom +
+                20,
         left: 20,
         right: 20,
         top: 16,

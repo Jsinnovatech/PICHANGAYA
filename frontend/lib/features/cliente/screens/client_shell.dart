@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:pichangaya/core/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -22,13 +23,31 @@ class _State extends State<ClientShell> {
   String _nombreCliente  = '';
   String _celularCliente = '';
   String _dniCliente     = '';
+  Timer? _inactivityTimer;
 
   @override
   void initState() {
     super.initState();
     _cargarNombre();
-    // Registrar FCM token ahora que el JWT ya está disponible
     FcmService.instance.syncToken();
+    _resetInactivityTimer();
+  }
+
+  @override
+  void dispose() {
+    _inactivityTimer?.cancel();
+    super.dispose();
+  }
+
+  void _resetInactivityTimer() {
+    _inactivityTimer?.cancel();
+    _inactivityTimer = Timer(const Duration(minutes: 2), _cerrarPorInactividad);
+  }
+
+  Future<void> _cerrarPorInactividad() async {
+    await FcmService.instance.limpiarToken();
+    await ApiClient().logout();
+    if (mounted) context.go('/entry');
   }
 
   Future<void> _cargarNombre() async {
@@ -72,86 +91,89 @@ class _State extends State<ClientShell> {
       const MisReservasTab(),
     ];
 
-    return Scaffold(
-      backgroundColor: AppColors.negro,
-      // ── TopBar minimalista ──────────────────────────────────
-      appBar: AppBar(
-        backgroundColor: AppColors.negro2,
-        elevation: 0,
-        titleSpacing: 16,
-        title: Text('⚽ PICHANGAYA',
-            style: GoogleFonts.bebasNeue(
-              fontSize: 22,
-              color: AppColors.verde,
-              letterSpacing: 2,
-            )),
-        actions: [
-          // Avatar con nombre
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: GestureDetector(
-              onTap: () => _mostrarMenuUsuario(context),
-              child: Row(children: [
-                if (_nombreCliente.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Text('Hola, $_nombreCliente',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.texto2,
-                        )),
-                  ),
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.verde,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.verdeOsc, width: 2),
-                  ),
-                  child: Center(
-                      child: Text(
-                    _nombreCliente.isNotEmpty
-                        ? _nombreCliente[0].toUpperCase()
-                        : 'U',
-                    style: const TextStyle(
-                      color: AppColors.negro,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
+    return Listener(
+      onPointerDown: (_) => _resetInactivityTimer(),
+      child: Scaffold(
+        backgroundColor: AppColors.negro,
+        // ── TopBar minimalista ──────────────────────────────────
+        appBar: AppBar(
+          backgroundColor: AppColors.negro2,
+          elevation: 0,
+          titleSpacing: 16,
+          title: Text('⚽ PICHANGAYA',
+              style: GoogleFonts.bebasNeue(
+                fontSize: 22,
+                color: AppColors.verde,
+                letterSpacing: 2,
+              )),
+          actions: [
+            // Avatar con nombre
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: GestureDetector(
+                onTap: () => _mostrarMenuUsuario(context),
+                child: Row(children: [
+                  if (_nombreCliente.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text('Hola, $_nombreCliente',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.texto2,
+                          )),
                     ),
-                  )),
-                ),
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.verde,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.verdeOsc, width: 2),
+                    ),
+                    child: Center(
+                        child: Text(
+                      _nombreCliente.isNotEmpty
+                          ? _nombreCliente[0].toUpperCase()
+                          : 'U',
+                      style: const TextStyle(
+                        color: AppColors.negro,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    )),
+                  ),
+                ]),
+              ),
+            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: AppColors.borde),
+          ),
+        ),
+
+        // ── Contenido ───────────────────────────────────────────
+        body: IndexedStack(index: _tabIndex, children: tabWidgets),
+
+        // ── Bottom Navigation Bar — mobile-first ────────────────
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.negro2,
+            border: Border(top: BorderSide(color: AppColors.borde)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 60,
+              child: Row(children: [
+                _navItem(0, Icons.map_outlined, Icons.map, 'Cerca'),
+                _navItem(1, Icons.sports_soccer_outlined, Icons.sports_soccer,
+                    'Canchas'),
+                _navItem(2, Icons.payment_outlined, Icons.payment, 'Pagar'),
+                _navItem(3, Icons.receipt_long_outlined, Icons.receipt_long,
+                    'Reservas'),
               ]),
             ),
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.borde),
-        ),
-      ),
-
-      // ── Contenido ───────────────────────────────────────────
-      body: IndexedStack(index: _tabIndex, children: tabWidgets),
-
-      // ── Bottom Navigation Bar — mobile-first ────────────────
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.negro2,
-          border: Border(top: BorderSide(color: AppColors.borde)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 60,
-            child: Row(children: [
-              _navItem(0, Icons.map_outlined, Icons.map, 'Cerca'),
-              _navItem(1, Icons.sports_soccer_outlined, Icons.sports_soccer,
-                  'Canchas'),
-              _navItem(2, Icons.payment_outlined, Icons.payment, 'Pagar'),
-              _navItem(3, Icons.receipt_long_outlined, Icons.receipt_long,
-                  'Reservas'),
-            ]),
           ),
         ),
       ),
@@ -425,7 +447,9 @@ class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
     return Padding(
       padding: EdgeInsets.only(
         left: 20, right: 20, top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom +
+                24,
       ),
       child: Form(
         key: _formKey,

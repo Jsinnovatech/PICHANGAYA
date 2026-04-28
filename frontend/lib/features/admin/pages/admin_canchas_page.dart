@@ -198,13 +198,19 @@ class _State extends State<AdminCanchasPage> {
           const SizedBox(height: 10),
 
           // Info chips
-          Row(children: [
+          Wrap(spacing: 6, runSpacing: 6, children: [
             _infoChip('⚽ ${c['superficie'] ?? 'N/A'}', AppColors.azul),
-            const SizedBox(width: 6),
             _infoChip('👥 ${c['capacidad'] ?? 0}', AppColors.texto2),
-            const SizedBox(width: 6),
-            _infoChip('S/.${(c['precio_hora'] ?? 0.0).toStringAsFixed(0)}/hr',
-                AppColors.verde),
+            if (c['precio_dia'] != null || c['precio_noche'] != null) ...[
+              if (c['precio_dia'] != null)
+                _infoChip('☀️ S/.${(c['precio_dia'] as num).toStringAsFixed(0)}/h',
+                    const Color(0xFFFFC107)),
+              if (c['precio_noche'] != null)
+                _infoChip('🌙 S/.${(c['precio_noche'] as num).toStringAsFixed(0)}/h',
+                    const Color(0xFF7986CB)),
+            ] else
+              _infoChip('S/.${(c['precio_hora'] ?? 0.0).toStringAsFixed(0)}/hr',
+                  AppColors.verde),
           ]),
           if (c['descripcion'] != null &&
               (c['descripcion'] as String).isNotEmpty) ...[

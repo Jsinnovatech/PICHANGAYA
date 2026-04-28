@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:pichangaya/core/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +23,7 @@ class _State extends State<SuperAdminShell> {
   int _pageIndex = 0;
   bool _sidebarOpen = false;
   String _nombreSuperAdmin = 'Super Admin';
+  Timer? _inactivityTimer;
 
   static const _navItems = [
     {'icon': '📊', 'label': 'Dashboard'},
@@ -47,8 +49,25 @@ class _State extends State<SuperAdminShell> {
   void initState() {
     super.initState();
     _cargarNombre();
-    // Registrar FCM token ahora que el JWT ya está disponible
     FcmService.instance.syncToken();
+    _resetInactivityTimer();
+  }
+
+  @override
+  void dispose() {
+    _inactivityTimer?.cancel();
+    super.dispose();
+  }
+
+  void _resetInactivityTimer() {
+    _inactivityTimer?.cancel();
+    _inactivityTimer = Timer(const Duration(minutes: 2), _cerrarPorInactividad);
+  }
+
+  Future<void> _cerrarPorInactividad() async {
+    await FcmService.instance.limpiarToken();
+    await ApiClient().logout();
+    if (mounted) context.go('/entry');
   }
 
   Future<void> _cargarNombre() async {
@@ -68,46 +87,50 @@ class _State extends State<SuperAdminShell> {
     final isWide = MediaQuery.of(context).size.width > 900;
 
     if (isWide) {
-      return Scaffold(
-        backgroundColor: AppColors.negro,
-        body: SafeArea(
-          bottom: false,
-          child: Row(children: [
-            _buildSidebar(),
-            Expanded(child: Column(children: [
-              _buildTopBar(),
-              Expanded(child: _pages[_pageIndex]),
-            ])),
-          ]),
+      return Listener(
+        onPointerDown: (_) => _resetInactivityTimer(),
+        child: Scaffold(
+          backgroundColor: AppColors.negro,
+          body: SafeArea(
+            child: Row(children: [
+              _buildSidebar(),
+              Expanded(child: Column(children: [
+                _buildTopBar(),
+                Expanded(child: _pages[_pageIndex]),
+              ])),
+            ]),
+          ),
         ),
       );
     }
 
     // Mobile: overlay drawer
-    return Scaffold(
-      backgroundColor: AppColors.negro,
-      body: SafeArea(
-        bottom: false,
-        child: Stack(children: [
-          Column(children: [
-            _buildTopBar(),
-            Expanded(child: _pages[_pageIndex]),
-          ]),
-          if (_sidebarOpen) ...[
-            GestureDetector(
-              onTap: () => setState(() => _sidebarOpen = false),
-              child: Container(
-                color: Colors.black54,
-                width: double.infinity,
-                height: double.infinity,
+    return Listener(
+      onPointerDown: (_) => _resetInactivityTimer(),
+      child: Scaffold(
+        backgroundColor: AppColors.negro,
+        body: SafeArea(
+          child: Stack(children: [
+            Column(children: [
+              _buildTopBar(),
+              Expanded(child: _pages[_pageIndex]),
+            ]),
+            if (_sidebarOpen) ...[
+              GestureDetector(
+                onTap: () => setState(() => _sidebarOpen = false),
+                child: Container(
+                  color: Colors.black54,
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
               ),
-            ),
-            Positioned(
-              left: 0, top: 0, bottom: 0,
-              child: _buildSidebar(),
-            ),
-          ],
-        ]),
+              Positioned(
+                left: 0, top: 0, bottom: 0,
+                child: _buildSidebar(),
+              ),
+            ],
+          ]),
+        ),
       ),
     );
   }

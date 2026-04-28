@@ -16,6 +16,8 @@ class _State extends State<AddCanchaModal> {
   final _nombreCtrl    = TextEditingController();
   final _capacidadCtrl = TextEditingController(text: '10');
   final _precioCtrl    = TextEditingController();
+  final _precioDiaCtrl   = TextEditingController();
+  final _precioNocheCtrl = TextEditingController();
   final _descCtrl      = TextEditingController();
 
   List<dynamic> _locales = [];
@@ -41,6 +43,8 @@ class _State extends State<AddCanchaModal> {
       _nombreCtrl.text    = c['nombre'] ?? '';
       _capacidadCtrl.text = '${c['capacidad'] ?? 10}';
       _precioCtrl.text    = '${c['precio_hora'] ?? ''}';
+      _precioDiaCtrl.text   = c['precio_dia'] != null ? '${c['precio_dia']}' : '';
+      _precioNocheCtrl.text = c['precio_noche'] != null ? '${c['precio_noche']}' : '';
       _descCtrl.text      = c['descripcion'] ?? '';
       _superficie         = c['superficie'] ?? 'Gras Sintético';
       _localId            = c['local_id']?.toString();
@@ -50,7 +54,8 @@ class _State extends State<AddCanchaModal> {
   @override
   void dispose() {
     _nombreCtrl.dispose(); _capacidadCtrl.dispose();
-    _precioCtrl.dispose(); _descCtrl.dispose();
+    _precioCtrl.dispose(); _precioDiaCtrl.dispose();
+    _precioNocheCtrl.dispose(); _descCtrl.dispose();
     super.dispose();
   }
 
@@ -75,11 +80,16 @@ class _State extends State<AddCanchaModal> {
 
     setState(() { _loading = true; _error = null; });
     try {
+      final precioDia   = double.tryParse(_precioDiaCtrl.text.trim());
+      final precioNoche = double.tryParse(_precioNocheCtrl.text.trim());
+
       final data = {
         'nombre':      nombre,
         'capacidad':   capacidad,
         'precio_hora': precio,
         'superficie':  _superficie,
+        if (precioDia != null && precioDia > 0)   'precio_dia':   precioDia,
+        if (precioNoche != null && precioNoche > 0) 'precio_noche': precioNoche,
         if (_descCtrl.text.trim().isNotEmpty) 'descripcion': _descCtrl.text.trim(),
         if (!_esEdicion) 'local_id': _localId,
       };
@@ -189,6 +199,82 @@ class _State extends State<AddCanchaModal> {
                   decoration: const InputDecoration(hintText: '70.00')),
             ])),
           ]),
+          const SizedBox(height: 14),
+
+          // ── Precios diferenciados día / noche ────────────────
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.negro3,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.borde),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Row(children: [
+                Icon(Icons.schedule, size: 14, color: AppColors.texto2),
+                SizedBox(width: 6),
+                Text('PRECIOS DIFERENCIADOS (opcional)',
+                    style: TextStyle(fontSize: 10, color: AppColors.texto2,
+                        fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+              ]),
+              const SizedBox(height: 4),
+              const Text('Dejar vacío para usar el mismo precio en todos los horarios.',
+                  style: TextStyle(fontSize: 10, color: AppColors.texto2,
+                      fontStyle: FontStyle.italic)),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _label('☀️ DÍA  06:00–17:59'),
+                  TextField(
+                    controller: _precioDiaCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: '60.00',
+                      hintStyle: const TextStyle(color: AppColors.texto2),
+                      filled: true,
+                      fillColor: AppColors.negro,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppColors.borde)),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFFFC107))),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFFFC107), width: 1.5)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    ),
+                  ),
+                ])),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _label('🌙 NOCHE  18:00–23:59'),
+                  TextField(
+                    controller: _precioNocheCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: '80.00',
+                      hintStyle: const TextStyle(color: AppColors.texto2),
+                      filled: true,
+                      fillColor: AppColors.negro,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppColors.borde)),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF7986CB))),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF7986CB), width: 1.5)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    ),
+                  ),
+                ])),
+              ]),
+            ]),
+          ),
           const SizedBox(height: 14),
 
           _label('SUPERFICIE'),

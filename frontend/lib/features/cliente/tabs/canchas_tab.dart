@@ -73,6 +73,15 @@ class _CanchasTabState extends State<CanchasTab> {
     return precioHora * h;
   }
 
+  /// Devuelve la tarifa por hora según si la hora de inicio es diurna o nocturna.
+  /// Diurno: 06:00–17:59 → precioDia; Nocturno: 18:00–05:59 → precioNoche.
+  double _precioHoraEfectivo(CanchaModel cancha, String horaInicio) {
+    if (cancha.precioDia == null && cancha.precioNoche == null) return cancha.precioHora;
+    final h = int.parse(horaInicio.split(':')[0]);
+    if (h >= 6 && h < 18) return cancha.precioDia ?? cancha.precioHora;
+    return cancha.precioNoche ?? cancha.precioHora;
+  }
+
   // Slot seleccionable para la duración activa
   bool _slotSeleccionable(int i) {
     if (_esTodoDia) return false;
@@ -414,11 +423,45 @@ class _CanchasTabState extends State<CanchasTab> {
       (2.0, '2h',  'Dos horas'),
     ];
 
+    // Hora del slot seleccionado (para calcular precio día/noche en los cards)
+    final slotHora = _slotSeleccionado != null
+        ? _slotSeleccionado!['hora_inicio']?.toString().substring(0, 5) ?? ''
+        : '';
+    final tienePreciosDiaNoche =
+        cancha.precioDia != null || cancha.precioNoche != null;
+
     return Column(children: [
       // Chips 1h / 1½h / 2h
       Row(children: opciones.map((o) {
         final sel = _duracionHoras == o.$1 && !_esTodoDia;
-        final precio = _precioParaDur(cancha.precioHora, o.$1);
+
+        // Si hay slot seleccionado, usamos su precio día/noche; si no, mostramos ambos
+        Widget _precioWidget() {
+          if (!tienePreciosDiaNoche) {
+            final precio = _precioParaDur(cancha.precioHora, o.$1);
+            return Text('S/.${precio.toStringAsFixed(0)}', style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w600,
+              color: sel ? AppColors.verde : AppColors.texto2));
+          }
+          if (slotHora.isNotEmpty) {
+            final precio = _precioParaDur(_precioHoraEfectivo(cancha, slotHora), o.$1);
+            return Text('S/.${precio.toStringAsFixed(0)}', style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w600,
+              color: sel ? AppColors.verde : AppColors.texto2));
+          }
+          // Sin slot: mostrar precio día y noche
+          return Column(children: [
+            if (cancha.precioDia != null)
+              Text('☀️ S/.${(cancha.precioDia! * o.$1).toStringAsFixed(0)}',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                  color: sel ? AppColors.verde : const Color(0xFFFFC107))),
+            if (cancha.precioNoche != null)
+              Text('🌙 S/.${(cancha.precioNoche! * o.$1).toStringAsFixed(0)}',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                  color: sel ? AppColors.verde : const Color(0xFF7986CB))),
+          ]);
+        }
+
         return Expanded(child: GestureDetector(
           onTap: () => setState(() {
             _duracionHoras    = o.$1;
@@ -441,9 +484,7 @@ class _CanchasTabState extends State<CanchasTab> {
               const SizedBox(height: 2),
               Text(o.$3, style: const TextStyle(fontSize: 9, color: AppColors.texto2)),
               const SizedBox(height: 3),
-              Text('S/.${precio.toStringAsFixed(0)}', style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w600,
-                color: sel ? AppColors.verde : AppColors.texto2)),
+              _precioWidget(),
             ]),
           ),
         ));
@@ -677,6 +718,20 @@ class _CanchasTabState extends State<CanchasTab> {
                               : AppColors.texto2,
                     ),
                   ),
+                  if (!ocupado && _canchaSeleccionada != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'S/.${_precioParaDur(_precioHoraEfectivo(_canchaSeleccionada!, horaInicio)).toStringAsFixed(0)}',
+                      style: TextStyle(
+                        fontSize: 9, fontWeight: FontWeight.w600,
+                        color: sel
+                            ? AppColors.negro.withOpacity(0.8)
+                            : disponible
+                                ? AppColors.verde.withOpacity(0.9)
+                                : AppColors.texto2.withOpacity(0.4),
+                      ),
+                    ),
+                  ],
                 ]),
               ),
             );
@@ -693,7 +748,7 @@ class _CanchasTabState extends State<CanchasTab> {
 
     final horaInicio = _slotSeleccionado!['hora_inicio']?.toString().substring(0, 5) ?? '';
     final horaFin    = _calcHoraFin(horaInicio);
-    final precio     = _precioParaDur(cancha.precioHora);
+    final precio     = _precioParaDur(_precioHoraEfectivo(cancha, horaInicio));
     final durLabel   = _esTodoDia
         ? '16 horas (todo el día)'
         : _duracionHoras == 1.5
@@ -739,7 +794,7 @@ class _CanchasTabState extends State<CanchasTab> {
     final horaInicio = _slotSeleccionado!['hora_inicio']?.toString().substring(0, 5) ?? '';
     final horaFin    = _calcHoraFin(horaInicio);
     final fechaStr   = DateFormat('d MMM', 'es').format(_fechaSeleccionada);
-    final precio     = _precioParaDur(_canchaSeleccionada!.precioHora);
+    final precio     = _precioParaDur(_precioHoraEfectivo(_canchaSeleccionada!, horaInicio));
 
     return Positioned(
       left: 12, right: 12, bottom: 16,
@@ -810,7 +865,7 @@ class _CanchasTabState extends State<CanchasTab> {
       fecha:           _fechaSeleccionada,
       horaInicio:      horaInicio,
       horaFin:         horaFin,
-      precioTotal:     _precioParaDur(_canchaSeleccionada!.precioHora),
+      precioTotal:     _precioParaDur(_precioHoraEfectivo(_canchaSeleccionada!, horaInicio)),
       nombreInicial:   nombre,
       telefonoInicial: telefono,
       dniInicial:      dni,
