@@ -240,6 +240,14 @@ class _AdminBloqueosPageState extends State<AdminBloqueosPage> {
     ]);
   }
 
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
+
   Widget _cardBloqueo(Map<String, dynamic> b) => Container(
     margin: const EdgeInsets.only(bottom: 8),
     padding: const EdgeInsets.all(14),

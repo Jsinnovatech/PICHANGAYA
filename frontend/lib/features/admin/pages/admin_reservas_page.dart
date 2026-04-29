@@ -452,6 +452,14 @@ class _DetalleReservaSheet extends StatelessWidget {
     );
   }
 
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
+
   Widget _fila(String label, String valor) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(children: [
