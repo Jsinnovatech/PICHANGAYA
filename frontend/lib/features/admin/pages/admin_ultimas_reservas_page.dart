@@ -111,6 +111,14 @@ class _State extends State<AdminUltimasReservasPage> {
     ]);
   }
 
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
+
   Widget _cardReserva(dynamic r) {
     final color = _colorEstado(r['estado']);
     return Container(
@@ -140,7 +148,7 @@ class _State extends State<AdminUltimasReservasPage> {
           const SizedBox(height: 4),
           Text(r['cliente'] ?? '—',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
-          Text('${r['cancha'] ?? ''} · ${r['fecha'] ?? ''} · ${r['hora'] ?? ''}',
+          Text('${r['cancha'] ?? ''} · ${_fmt(r['fecha'])} · ${r['hora'] ?? ''}',
               style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         ])),
         Text('S/.${r['monto']?.toString() ?? '0'}',

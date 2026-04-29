@@ -194,7 +194,7 @@ class _State extends State<SuperAdminReservasPage> {
                 style: const TextStyle(fontSize: 11, color: AppColors.amarillo)),
           const SizedBox(height: 8),
           Row(children: [
-            _chip('📅 ${r['fecha'] ?? ''}', AppColors.texto2),
+            _chip('📅 ${_fmt(r['fecha'])}', AppColors.texto2),
             const SizedBox(width: 6),
             _chip('🕐 ${r['hora_inicio'] ?? ''} - ${r['hora_fin'] ?? ''}',
                 AppColors.texto2),
@@ -261,6 +261,14 @@ class _State extends State<SuperAdminReservasPage> {
         style: TextStyle(fontSize: 10, color: _colorEstado(estado),
             fontWeight: FontWeight.w700)),
   );
+
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
 
   Widget _chip(String text, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -332,7 +340,7 @@ class _DetalleSheet extends StatelessWidget {
             _fila('Cancha',      r['cancha_nombre'] ?? '—'),
             _fila('Local',       r['local_nombre'] ?? '—'),
             _fila('Admin',       r['admin_nombre'] ?? '—'),
-            _fila('Fecha',       r['fecha'] ?? '—'),
+            _fila('Fecha',       _fmt(r['fecha'])),
             _fila('Horario',     '${r['hora_inicio'] ?? ''} - ${r['hora_fin'] ?? ''}'),
             _fila('Precio',      'S/.${r['precio_total']?.toString() ?? '0'}'),
             _fila('Método',      r['metodo_pago']?.toString().toUpperCase() ?? 'Pendiente'),

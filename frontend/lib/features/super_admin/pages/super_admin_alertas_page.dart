@@ -171,6 +171,14 @@ class _State extends State<SuperAdminAlertasPage> {
     );
   }
 
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
+
   Widget _buildCard(Map<String, dynamic> a) {
     final dias  = (a['dias_restantes'] as num?)?.toInt() ?? 0;
     final color = _colorDias(dias);
@@ -226,7 +234,7 @@ class _State extends State<SuperAdminAlertasPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Vence: ${a['fecha_vencimiento'] ?? '—'}',
+            'Vence: ${_fmt(a['fecha_vencimiento']?.toString())}',
             style: const TextStyle(fontSize: 11, color: AppColors.texto2),
           ),
         ]),

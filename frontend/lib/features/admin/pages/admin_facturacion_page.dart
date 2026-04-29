@@ -226,7 +226,7 @@ class _State extends State<AdminFacturacionPage> {
             style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         const SizedBox(height: 6),
         Row(children: [
-          Text('${e['cancha_nombre'] ?? '—'} · ${e['fecha'] ?? ''}',
+          Text('${e['cancha_nombre'] ?? '—'} · ${_fmt(e['fecha'])}',
               style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
           const Spacer(),
           Text('S/.${(e['monto'] ?? 0.0).toStringAsFixed(2)}',
@@ -290,7 +290,7 @@ Código: ${e['codigo'] ?? '—'}
 Cliente: ${e['cliente_nombre'] ?? '—'}
 DNI: ${e['dni_cliente'] ?? '—'}
 Tel: +51 ${e['cliente_celular'] ?? '—'}
-Cancha: ${e['cancha_nombre'] ?? '—'} · ${e['fecha'] ?? '—'}
+Cancha: ${e['cancha_nombre'] ?? '—'} · ${_fmt(e['fecha'])}
 Monto: S/.${(e['monto'] ?? 0.0).toStringAsFixed(2)}
 Método: $metodoLabel
 Tipo: ${e['tipo_doc']?.toString().toUpperCase() ?? 'SIN TIPO'}''';
@@ -372,6 +372,14 @@ Tipo: ${e['tipo_doc']?.toString().toUpperCase() ?? 'SIN TIPO'}''';
           color: enabled ? AppColors.verde : AppColors.borde),
     ),
   );
+
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
 
   Widget _badgeTipoDoc(String? tipo) {
     Color color; String label;

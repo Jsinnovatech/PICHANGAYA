@@ -203,7 +203,7 @@ class _AdminBloqueosPageState extends State<AdminBloqueosPage> {
             Icon(Icons.calendar_today, size: 14, color: _fechaFiltro != null ? AppColors.verde : AppColors.texto2),
             const SizedBox(width: 6),
             Text(
-              _fechaFiltro != null ? DateFormat('dd/MM').format(_fechaFiltro!) : 'Fecha',
+              _fechaFiltro != null ? DateFormat('dd-MM-yyyy').format(_fechaFiltro!) : 'Fecha',
               style: TextStyle(fontSize: 12, color: _fechaFiltro != null ? AppColors.verde : AppColors.texto2),
             ),
           ]),
@@ -265,7 +265,7 @@ class _AdminBloqueosPageState extends State<AdminBloqueosPage> {
         Row(children: [
           const Icon(Icons.calendar_today, size: 11, color: AppColors.texto2),
           const SizedBox(width: 4),
-          Text(b['fecha'] ?? '', style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
+          Text(_fmt(b['fecha']), style: const TextStyle(fontSize: 12, color: AppColors.texto2)),
           const SizedBox(width: 10),
           const Icon(Icons.access_time, size: 11, color: AppColors.texto2),
           const SizedBox(width: 4),
@@ -469,7 +469,7 @@ class _FormularioBloqueoState extends State<_FormularioBloqueo> {
             child: Row(children: [
               const Icon(Icons.calendar_today, color: AppColors.verde, size: 16),
               const SizedBox(width: 10),
-              Text(DateFormat('EEEE d MMMM yyyy', 'es').format(_fecha),
+              Text(DateFormat('dd-MM-yyyy').format(_fecha),
                   style: const TextStyle(color: Colors.white, fontSize: 14)),
             ]),
           ),
@@ -535,6 +535,14 @@ class _FormularioBloqueoState extends State<_FormularioBloqueo> {
         ),
       ])),
     );
+  }
+
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
   }
 
   Widget _label(String text) => Text(text,

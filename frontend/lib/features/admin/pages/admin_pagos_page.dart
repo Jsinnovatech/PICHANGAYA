@@ -244,7 +244,7 @@ class _State extends State<AdminPagosPage> {
                         color: Colors.white)),
                 Text('+51 ${p['cliente_celular'] ?? ''}',
                     style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
-                Text(p['fecha'] ?? '',
+                Text(_fmt(p['fecha']),
                     style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
               ])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -392,6 +392,14 @@ class _State extends State<AdminPagosPage> {
           color: enabled ? AppColors.verde : AppColors.borde),
     ),
   );
+
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
 
   Widget _badgeEstado(String estado) => Container(
     margin: const EdgeInsets.only(top: 4),

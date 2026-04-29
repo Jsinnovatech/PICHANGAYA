@@ -300,7 +300,7 @@ class _MisReservasTabState extends State<MisReservasTab> {
                       color: AppColors.texto2, size: 10),
                   const SizedBox(width: 3),
                   Flexible(
-                      child: Text(r.fecha,
+                      child: Text(_fmt(r.fecha),
                           style: const TextStyle(
                               fontSize: 11, color: Colors.white))),
                 ])),
@@ -370,6 +370,14 @@ class _MisReservasTabState extends State<MisReservasTab> {
           const SizedBox(height: 10),
       ]),
     );
+  }
+
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
   }
 
   Widget _col(String label, Widget content) => Expanded(

@@ -148,6 +148,14 @@ class _State extends State<SuperAdminHistorialPagosPage> {
     );
   }
 
+  String _fmt(String? f) {
+    if (f == null || f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}-${p[1]}-${p[0]}';
+    return f;
+  }
+
   Widget _buildCard(Map<String, dynamic> s) {
     final estado  = s['estado'] as String? ?? '';
     final color   = _colorEstado(estado);
@@ -198,13 +206,13 @@ class _State extends State<SuperAdminHistorialPagosPage> {
           ),
           const SizedBox(width: 8),
           if (s['fecha_pago'] != null)
-            Text('Pagado: ${s['fecha_pago']}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
+            Text('Pagado: ${_fmt(s['fecha_pago']?.toString())}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
           if (s['fecha_vencimiento'] != null) ...[
             const Text(' · ', style: TextStyle(color: AppColors.borde)),
-            Text('Vence: ${s['fecha_vencimiento']}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
+            Text('Vence: ${_fmt(s['fecha_vencimiento']?.toString())}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
           ],
           if (s['fecha_pago'] == null && s['created_at'] != null)
-            Text('Enviado: ${s['created_at']}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
+            Text('Enviado: ${_fmt(s['created_at']?.toString())}', style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
         ]),
         // Fila 4: motivo rechazo (solo si aplica)
         if (estado == 'rechazado' && s['motivo_rechazo'] != null) ...[

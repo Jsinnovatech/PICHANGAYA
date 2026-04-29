@@ -793,7 +793,7 @@ class _CanchasTabState extends State<CanchasTab> {
   Widget _buildCTAFlotante() {
     final horaInicio = _slotSeleccionado!['hora_inicio']?.toString().substring(0, 5) ?? '';
     final horaFin    = _calcHoraFin(horaInicio);
-    final fechaStr   = DateFormat('d MMM', 'es').format(_fechaSeleccionada);
+    final fechaStr   = DateFormat('dd-MM-yyyy').format(_fechaSeleccionada);
     final precio     = _precioParaDur(_precioHoraEfectivo(_canchaSeleccionada!, horaInicio));
 
     return Positioned(

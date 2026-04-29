@@ -103,7 +103,7 @@ class _ReservaModalState extends State<ReservaModal> {
   late final TextEditingController _notasCtrl;
 
   // ── Formato de fecha (intl) ───────────────────────────────────
-  static final _fmtFecha    = DateFormat("EEEE, d MMM yyyy", "es");
+  static final _fmtFecha    = DateFormat("dd-MM-yyyy");
   static final _fmtFechaApi = DateFormat("yyyy-MM-dd");
 
   @override
