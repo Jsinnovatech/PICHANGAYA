@@ -121,8 +121,10 @@ class _State extends State<AddCanchaModal> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom +
+        MediaQuery.of(context).padding.bottom;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: bottomInset),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min,

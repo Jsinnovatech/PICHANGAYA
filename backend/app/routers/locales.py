@@ -144,39 +144,23 @@ async def get_canchas_por_local(
     )
     canchas = result.scalars().all()
 
-    # Calcular precio_dia / precio_noche por cancha desde HorarioDisponible.
-    # Se consultan TODOS los horarios (no solo activo=True) para que el precio
-    # configurado por el admin siempre sea visible al cliente, independientemente
-    # de si los horarios están activos o no.
-    respuesta = []
-    for cancha in canchas:
-        horarios_res = await db.execute(
-            select(HorarioDisponible).where(
-                HorarioDisponible.cancha_id == cancha.id
-            )
-        )
-        todos_horarios = horarios_res.scalars().all()
-
-        # Solo se usan overrides explícitos para precio_dia / precio_noche
-        overrides_dia   = [float(h.precio_override) for h in todos_horarios
-                           if h.hora_inicio.hour < 18 and h.precio_override is not None]
-        overrides_noche = [float(h.precio_override) for h in todos_horarios
-                           if h.hora_inicio.hour >= 18 and h.precio_override is not None]
-
-        respuesta.append(CanchaResponse(
+    # precio_dia / precio_noche se leen directo de la columna en Cancha.
+    # Se persisten al guardar la cancha — independiente de HorarioDisponible.
+    return [
+        CanchaResponse(
             id=cancha.id,
             local_id=cancha.local_id,
             nombre=cancha.nombre,
             capacidad=cancha.capacidad,
             precio_hora=float(cancha.precio_hora),
-            precio_dia=min(overrides_dia) if overrides_dia else None,
-            precio_noche=min(overrides_noche) if overrides_noche else None,
+            precio_dia=float(cancha.precio_dia) if cancha.precio_dia is not None else None,
+            precio_noche=float(cancha.precio_noche) if cancha.precio_noche is not None else None,
             superficie=cancha.superficie,
             foto_url=cancha.foto_url,
             activa=cancha.activa,
-        ))
-
-    return respuesta
+        )
+        for cancha in canchas
+    ]
 
 
 @router.get("/{local_id}/canchas/{cancha_id}/disponibilidad", response_model=List[SlotDisponibilidad])
