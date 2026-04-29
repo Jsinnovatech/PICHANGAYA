@@ -307,7 +307,8 @@ class _PagoSheet extends StatefulWidget {
 class _PagoSheetState extends State<_PagoSheet> {
   Uint8List? _imagenBytes;
   String? _imagenNombre;
-  bool _enviando = false;
+  bool _enviando    = false;
+  bool _pagoExitoso = false;
   int _tab = 0; // 0=beneficios, 1=pago
 
   Color get _color {
@@ -357,7 +358,7 @@ class _PagoSheetState extends State<_PagoSheet> {
       });
       await ApiClient().dio.post('/suscripcion/$suscripcionId/voucher', data: formData);
 
-      widget.onPagoConfirmado();
+      if (mounted) setState(() => _pagoExitoso = true);
     } on DioException catch (e) {
       if (!mounted) return;
       String msg = 'Error al enviar el pago. Intenta de nuevo.';
@@ -400,7 +401,9 @@ class _PagoSheetState extends State<_PagoSheet> {
           color: AppColors.negro2,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        child: Column(children: [
+        child: _pagoExitoso
+            ? _buildPantallaExito(nombre, precio)
+            : Column(children: [
           // Handle
           Center(
             child: Container(
@@ -473,6 +476,85 @@ class _PagoSheetState extends State<_PagoSheet> {
               ),
             ),
         ]),
+      ),
+    );
+  }
+
+  Widget _buildPantallaExito(String nombrePlan, double precio) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, 32, 24, 24 + bottomPad),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Ícono de éxito animado
+          Container(
+            width: 90, height: 90,
+            decoration: BoxDecoration(
+              color: AppColors.verde.withOpacity(0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.verde.withOpacity(0.4), width: 2),
+            ),
+            child: const Center(
+              child: Text('✅', style: TextStyle(fontSize: 44)),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Título
+          const Text(
+            '¡Voucher enviado!',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white),
+          ),
+          const SizedBox(height: 10),
+
+          // Descripción
+          Text(
+            'Tu comprobante de pago del $nombrePlan (S/.${precio.toStringAsFixed(0)}) fue enviado al super admin.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, color: AppColors.texto2, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+
+          // Info notificación
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.verde.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.verde.withOpacity(0.25)),
+            ),
+            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('🔔', style: TextStyle(fontSize: 16)),
+              SizedBox(width: 10),
+              Expanded(child: Text(
+                'El super admin recibirá una notificación y verificará tu pago. '
+                'Te avisaremos cuando tu suscripción esté activa.',
+                style: TextStyle(fontSize: 12, color: AppColors.verde, height: 1.5),
+              )),
+            ]),
+          ),
+          const SizedBox(height: 32),
+
+          // Botón Entendido
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: widget.onPagoConfirmado,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.verde,
+                foregroundColor: AppColors.negro,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text(
+                '✅  Entendido',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
