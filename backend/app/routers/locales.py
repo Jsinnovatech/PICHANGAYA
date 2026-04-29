@@ -144,21 +144,24 @@ async def get_canchas_por_local(
     )
     canchas = result.scalars().all()
 
-    # Calcular precio_dia / precio_noche por cancha desde HorarioDisponible
+    # Calcular precio_dia / precio_noche por cancha desde HorarioDisponible.
+    # Se consultan TODOS los horarios (no solo activo=True) para que el precio
+    # configurado por el admin siempre sea visible al cliente, independientemente
+    # de si los horarios están activos o no.
     respuesta = []
     for cancha in canchas:
         horarios_res = await db.execute(
             select(HorarioDisponible).where(
-                HorarioDisponible.cancha_id == cancha.id,
-                HorarioDisponible.activo == True
+                HorarioDisponible.cancha_id == cancha.id
             )
         )
-        horarios = horarios_res.scalars().all()
+        todos_horarios = horarios_res.scalars().all()
 
-        precios_dia = [float(h.precio_override or cancha.precio_hora)
-                       for h in horarios if h.hora_inicio.hour < 18]
-        precios_noche = [float(h.precio_override or cancha.precio_hora)
-                         for h in horarios if h.hora_inicio.hour >= 18]
+        # Solo se usan overrides explícitos para precio_dia / precio_noche
+        overrides_dia   = [float(h.precio_override) for h in todos_horarios
+                           if h.hora_inicio.hour < 18 and h.precio_override is not None]
+        overrides_noche = [float(h.precio_override) for h in todos_horarios
+                           if h.hora_inicio.hour >= 18 and h.precio_override is not None]
 
         respuesta.append(CanchaResponse(
             id=cancha.id,
@@ -166,8 +169,8 @@ async def get_canchas_por_local(
             nombre=cancha.nombre,
             capacidad=cancha.capacidad,
             precio_hora=float(cancha.precio_hora),
-            precio_dia=min(precios_dia) if precios_dia else None,
-            precio_noche=min(precios_noche) if precios_noche else None,
+            precio_dia=min(overrides_dia) if overrides_dia else None,
+            precio_noche=min(overrides_noche) if overrides_noche else None,
             superficie=cancha.superficie,
             foto_url=cancha.foto_url,
             activa=cancha.activa,
