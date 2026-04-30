@@ -184,8 +184,15 @@ class _PagoModalState extends State<PagoModal> {
     } catch (e) {
       debugPrint('[PagoModal] Error subiendo voucher: $e');
       if (!mounted) return;
+      String msg = 'Error al subir. Intenta de nuevo.';
+      if (e is DioException && e.response?.data != null) {
+        final detail = e.response!.data is Map
+            ? e.response!.data['detail']?.toString()
+            : e.response!.data?.toString();
+        if (detail != null && detail.isNotEmpty) msg = detail;
+      }
       setState(() {
-        _error     = 'Error al subir. Intenta de nuevo.';
+        _error     = msg;
         _uploading = false;
       });
     }
