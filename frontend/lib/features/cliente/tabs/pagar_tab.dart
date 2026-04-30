@@ -236,15 +236,7 @@ class _PagarTabState extends State<PagarTab> {
           Padding(
             padding: const EdgeInsets.all(14),
             child: Row(children: [
-              Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                    color: _colorMetodo(pago.metodo).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10)),
-                child: Center(
-                    child: Text(_iconoMetodo(pago.metodo),
-                        style: const TextStyle(fontSize: 22))),
-              ),
+              _iconoWidget(pago.metodo),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(pago.metodo.toUpperCase(),
@@ -255,7 +247,7 @@ class _PagarTabState extends State<PagarTab> {
                 if (pago.reservaCodigo != null)
                   Text('Reserva ${pago.reservaCodigo}',
                       style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
-                Text(pago.fecha,
+                Text(_fmtFecha(pago.fecha),
                     style: const TextStyle(fontSize: 11, color: AppColors.texto2)),
                 Row(children: [
                   Container(
@@ -447,6 +439,36 @@ class _PagarTabState extends State<PagarTab> {
       child: Icon(icon, size: 16, color: enabled ? AppColors.verde : AppColors.borde),
     ),
   );
+
+  String _fmtFecha(String f) {
+    if (f.isEmpty) return '—';
+    final dateStr = f.contains('T') ? f.split('T')[0] : f;
+    final p = dateStr.split('-');
+    if (p.length == 3) return '${p[2]}/${p[1]}/${p[0]}';
+    return f;
+  }
+
+  Widget _iconoWidget(String metodo) {
+    if (metodo == 'yape') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.asset('assets/images/yape_logo.png', width: 44, height: 44, fit: BoxFit.cover),
+      );
+    }
+    if (metodo == 'plin') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.asset('assets/images/plin_logo.png', width: 44, height: 44, fit: BoxFit.cover),
+      );
+    }
+    return Container(
+      width: 44, height: 44,
+      decoration: BoxDecoration(
+          color: _colorMetodo(metodo).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10)),
+      child: Center(child: Text(_iconoMetodo(metodo), style: const TextStyle(fontSize: 22))),
+    );
+  }
 
   Color _colorMetodo(String m) {
     switch (m) {

@@ -225,15 +225,7 @@ class _State extends State<AdminPagosPage> {
           Padding(
             padding: const EdgeInsets.all(14),
             child: Row(children: [
-              Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: _colorMetodo(p['metodo'] ?? '').withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Center(child: Text(_iconoMetodo(p['metodo'] ?? ''),
-                    style: const TextStyle(fontSize: 22))),
-              ),
+              _iconoWidget(p['metodo'] ?? ''),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(p['reserva_codigo'] ?? '—',
@@ -429,6 +421,28 @@ class _State extends State<AdminPagosPage> {
       case 'rechazado':  return '❌ RECHAZADO';
       default:           return e.toUpperCase();
     }
+  }
+
+  Widget _iconoWidget(String metodo) {
+    if (metodo == 'yape') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.asset('assets/images/yape_logo.png', width: 44, height: 44, fit: BoxFit.cover),
+      );
+    }
+    if (metodo == 'plin') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.asset('assets/images/plin_logo.png', width: 44, height: 44, fit: BoxFit.cover),
+      );
+    }
+    return Container(
+      width: 44, height: 44,
+      decoration: BoxDecoration(
+          color: _colorMetodo(metodo).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10)),
+      child: Center(child: Text(_iconoMetodo(metodo), style: const TextStyle(fontSize: 22))),
+    );
   }
 
   Color _colorMetodo(String m) {

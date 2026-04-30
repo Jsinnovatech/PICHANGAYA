@@ -244,6 +244,7 @@ class _PagoModalState extends State<PagoModal> {
             const SizedBox(height: 16),
             _MontoCard(
               icono:   datos['icono']!,
+              metodo:  widget.metodoPago,
               numero:  datos['numero']!,
               titular: datos['titular'] ?? '',
               monto:   widget.monto,
@@ -336,6 +337,7 @@ class _PagoHeader extends StatelessWidget {
 class _MontoCard extends StatelessWidget {
   const _MontoCard({
     required this.icono,
+    required this.metodo,
     required this.numero,
     required this.titular,
     required this.monto,
@@ -344,11 +346,28 @@ class _MontoCard extends StatelessWidget {
   });
 
   final String  icono;
+  final String  metodo;
   final String  numero;
   final String  titular;
   final double  monto;
   final bool    esPagoLocal;
   final String? qrBase64;
+
+  Widget _buildIcono() {
+    if (metodo == 'yape') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset('assets/images/yape_logo.png', width: 56, height: 56, fit: BoxFit.cover),
+      );
+    }
+    if (metodo == 'plin') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset('assets/images/plin_logo.png', width: 56, height: 56, fit: BoxFit.cover),
+      );
+    }
+    return Text(icono, style: const TextStyle(fontSize: 40));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -370,7 +389,7 @@ class _MontoCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(icono, style: const TextStyle(fontSize: 40)),
+          _buildIcono(),
           const SizedBox(height: 8),
           Text(
             esPagoLocal ? 'Paga al llegar:' : 'Envía el pago a:',

@@ -110,6 +110,13 @@ async def crear_reserva(
             raise HTTPException(status_code=400, detail="La razón social es obligatoria para facturas")
 
     # ── Paso 5: Crear reserva ─────────────────────────────────
+    # Precio según horario: día (00:00–17:59) → precio_dia, noche (18:00–23:59) → precio_noche
+    if hora_inicio_time.hour < 18:
+        precio_por_hora = float(cancha.precio_dia or cancha.precio_hora)
+    else:
+        precio_por_hora = float(cancha.precio_noche or cancha.precio_hora)
+    precio_calculado = round(precio_por_hora * (new_end - new_start) / 60, 2)
+
     nueva_reserva = Reserva(
         id=uuid.uuid4(),
         codigo=codigo,
@@ -118,7 +125,7 @@ async def crear_reserva(
         fecha=data.fecha,
         hora_inicio=hora_inicio_time,
         hora_fin=hora_fin_time,
-        precio_total=round(float(cancha.precio_hora) * (new_end - new_start) / 60, 2),
+        precio_total=precio_calculado,
         estado=EstadoReservaEnum.pending,
         tipo_doc=TipoDocEnum.factura if es_factura else TipoDocEnum.boleta,
         ruc_factura=data.ruc_factura.strip() if es_factura and data.ruc_factura else None,

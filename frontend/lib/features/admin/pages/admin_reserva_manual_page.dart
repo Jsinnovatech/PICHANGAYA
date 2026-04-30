@@ -669,7 +669,7 @@ class _ModalState extends State<_ModalReservaManual> {
                 border: Border.all(color: sel ? AppColors.verde : AppColors.borde, width: sel ? 1.5 : 1),
               ),
               child: Column(children: [
-                Text(m['icon']!, style: const TextStyle(fontSize: 18)),
+                _iconoMetodo(m['value']!, m['icon']!),
                 const SizedBox(height: 3),
                 Text(m['label']!, style: TextStyle(
                   fontSize: 9, fontWeight: FontWeight.w700,
@@ -727,6 +727,22 @@ class _ModalState extends State<_ModalReservaManual> {
         ? ((h >= 6 && h < 18) ? (precioDia ?? precioBase) : (precioNoche ?? precioBase))
         : precioBase;
     return tarifa * horas;
+  }
+
+  Widget _iconoMetodo(String metodo, String emoji) {
+    if (metodo == 'yape') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: Image.asset('assets/images/yape_logo.png', width: 24, height: 24, fit: BoxFit.cover),
+      );
+    }
+    if (metodo == 'plin') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: Image.asset('assets/images/plin_logo.png', width: 24, height: 24, fit: BoxFit.cover),
+      );
+    }
+    return Text(emoji, style: const TextStyle(fontSize: 18));
   }
 
   Widget _campo(String label, TextEditingController ctrl, TextInputType tipo, {int? maxLength}) =>

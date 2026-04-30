@@ -501,6 +501,22 @@ class _SelectorMetodoPago extends StatelessWidget {
     ('efectivo',      'Efectivo',  '💵', 'En local'),
   ];
 
+  static Widget _iconoMetodoPago(String metodo, String emoji) {
+    if (metodo == 'yape') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.asset('assets/images/yape_logo.png', width: 28, height: 28, fit: BoxFit.cover),
+      );
+    }
+    if (metodo == 'plin') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.asset('assets/images/plin_logo.png', width: 28, height: 28, fit: BoxFit.cover),
+      );
+    }
+    return Text(emoji, style: const TextStyle(fontSize: 22));
+  }
+
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -533,7 +549,7 @@ class _SelectorMetodoPago extends StatelessWidget {
                           width: activo ? 1.5 : 1),
                     ),
                     child: Column(children: [
-                      Text(m.$3, style: const TextStyle(fontSize: 22)),
+                      _iconoMetodoPago(m.$1, m.$3),
                       const SizedBox(height: 4),
                       Text(
                         m.$2,
