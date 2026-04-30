@@ -33,8 +33,16 @@ async def subir_imagen_imgbb(imagen_bytes: bytes, nombre: str) -> str:
             timeout=30.0
         )
     if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Error al subir imagen a imgbb")
-    return response.json()["data"]["url"]
+        try:
+            err = response.json()
+            msg = err.get("error", {}).get("message", f"HTTP {response.status_code}")
+        except Exception:
+            msg = f"HTTP {response.status_code}"
+        raise HTTPException(status_code=500, detail=f"Error imgbb: {msg}")
+    data = response.json()
+    if not data.get("success"):
+        raise HTTPException(status_code=500, detail=f"imgbb no exitoso: {data}")
+    return data["data"]["url"]
 
 
 @router.get("/mis-pagos", response_model=List[PagoClienteResponse])
