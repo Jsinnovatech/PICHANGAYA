@@ -94,6 +94,8 @@ class ReservaManualRequest(BaseModel):
         if not re.match(r"^\d{2}:\d{2}$", v):
             raise ValueError("Formato de hora debe ser HH:MM")
         h, m = map(int, v.split(":"))
+        if h == 24 and m == 0:
+            return "00:00"
         if not (0 <= h <= 23 and 0 <= m <= 59):
             raise ValueError("Hora inválida")
         return v
@@ -101,8 +103,9 @@ class ReservaManualRequest(BaseModel):
     @field_validator("fecha")
     @classmethod
     def fecha_no_pasada(cls, v) -> date:
-        from datetime import date as date_type
-        if v < date_type.today():
+        from datetime import datetime, timezone, timedelta
+        peru_hoy = datetime.now(timezone(timedelta(hours=-5))).date()
+        if v < peru_hoy:
             raise ValueError("No se pueden crear reservas en fechas pasadas")
         return v
 
@@ -411,6 +414,8 @@ class BloqueoCreateRequest(BaseModel):
         if not re.match(r"^\d{2}:\d{2}$", v):
             raise ValueError("Formato de hora debe ser HH:MM")
         h, m = map(int, v.split(":"))
+        if h == 24 and m == 0:
+            return "00:00"
         if not (0 <= h <= 23 and 0 <= m <= 59):
             raise ValueError("Hora inválida")
         return v
@@ -418,8 +423,9 @@ class BloqueoCreateRequest(BaseModel):
     @field_validator("fecha")
     @classmethod
     def fecha_no_pasada(cls, v) -> date:
-        from datetime import date as date_type
-        if v < date_type.today():
+        from datetime import datetime, timezone, timedelta
+        peru_hoy = datetime.now(timezone(timedelta(hours=-5))).date()
+        if v < peru_hoy:
             raise ValueError("No se pueden crear bloqueos en fechas pasadas")
         return v
 

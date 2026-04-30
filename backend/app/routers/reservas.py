@@ -28,7 +28,11 @@ def str_a_time(hora_str: str) -> time_type:
         partes = hora_str.split(":")
         if len(partes) < 2:
             raise ValueError
-        return time_type(int(partes[0]), int(partes[1]))
+        h, m = int(partes[0]), int(partes[1])
+        # 24:00 = medianoche = 00:00 (fin del slot nocturno 23:00-24:00)
+        if h == 24 and m == 0:
+            return time_type(0, 0)
+        return time_type(h, m)
     except (ValueError, IndexError):
         raise HTTPException(status_code=400, detail=f"Hora inválida: '{hora_str}'. Use formato HH:MM")
 

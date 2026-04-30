@@ -67,6 +67,9 @@ class ReservaCreateRequest(BaseModel):
         if not re.match(r"^\d{2}:\d{2}$", v):
             raise ValueError("Formato de hora debe ser HH:MM")
         h, m = map(int, v.split(":"))
+        # 24:00 es válido como alias de medianoche (fin del slot nocturno 23:00-24:00)
+        if h == 24 and m == 0:
+            return "00:00"
         if not (0 <= h <= 23 and 0 <= m <= 59):
             raise ValueError("Hora inválida")
         return v
@@ -76,7 +79,11 @@ class ReservaCreateRequest(BaseModel):
     @field_validator("fecha")
     @classmethod
     def fecha_no_pasada(cls, v) -> date_type:
-        if v < date_type.today():
+        from datetime import datetime, timezone, timedelta
+        # Usar zona horaria Perú (UTC-5) para evitar rechazar "hoy" cuando
+        # el servidor Railway corre en UTC y ya pasó la medianoche UTC.
+        peru_hoy = datetime.now(timezone(timedelta(hours=-5))).date()
+        if v < peru_hoy:
             raise ValueError("No se pueden reservar fechas pasadas")
         return v
 
