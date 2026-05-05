@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.comprobante import Comprobante
 from app.schemas.reservas import ReservaCreateRequest, ReservaResponse, MiReservaResponse
 from app.notificaciones import notif_reserva_nueva, notif_reserva_cancelada_por_cliente
+from app.routers.websocket import manager as ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,12 @@ async def crear_reserva(
                 await db.commit()
     except Exception as e:
         logger.warning(f"Notificación de nueva reserva no enviada: {e}")
+
+    # ── Broadcast WS al dashboard del admin (no crítico) ─────
+    try:
+        await ws_manager.broadcast({"tipo": "nueva_reserva"})
+    except Exception:
+        pass
 
     return ReservaResponse(
         id=nueva_reserva.id,
