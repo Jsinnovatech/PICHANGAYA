@@ -1,6 +1,9 @@
 """
 fcm.py — Envío de push notifications via Firebase Cloud Messaging HTTP v1 API.
 Usa la cuenta de servicio JSON para autenticarse (no la legacy Server Key).
+
+En producción (Railway): set FIREBASE_SERVICE_ACCOUNT_JSON_CONTENT con el JSON completo.
+En local: usa el archivo firebase-service-account.json en la raíz del backend.
 """
 import json
 import logging
@@ -20,7 +23,36 @@ _cached_token: Optional[str] = None
 _token_expires_at: float = 0.0
 
 
-async def _get_access_token(service_account_path: str) -> Optional[str]:
+def _load_service_account() -> Optional[dict]:
+    """
+    Carga la cuenta de servicio desde:
+    1. Variable de entorno FIREBASE_SERVICE_ACCOUNT_JSON_CONTENT (JSON completo) — Railway
+    2. Archivo en disco (settings.FIREBASE_SERVICE_ACCOUNT_JSON) — local
+    Retorna el dict con las credenciales o None si no se puede cargar.
+    """
+    # Opción 1: variable de entorno con el JSON completo (Railway)
+    json_content = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON_CONTENT")
+    if json_content:
+        try:
+            return json.loads(json_content)
+        except Exception as e:
+            logger.warning(f"FCM: error parseando FIREBASE_SERVICE_ACCOUNT_JSON_CONTENT: {e}")
+
+    # Opción 2: archivo en disco (local)
+    from app.core.config import settings
+    sa_path = settings.FIREBASE_SERVICE_ACCOUNT_JSON
+    if os.path.exists(sa_path):
+        try:
+            with open(sa_path) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"FCM: error leyendo {sa_path}: {e}")
+
+    logger.warning("FCM: no se encontró cuenta de servicio (env var ni archivo). Push deshabilitado.")
+    return None
+
+
+async def _get_access_token(sa: dict) -> Optional[str]:
     """Obtiene un access token OAuth2 desde la cuenta de servicio."""
     global _cached_token, _token_expires_at
     import time
@@ -29,9 +61,6 @@ async def _get_access_token(service_account_path: str) -> Optional[str]:
         return _cached_token
 
     try:
-        with open(service_account_path) as f:
-            sa = json.load(f)
-
         import jwt as pyjwt  # PyJWT
         now = int(time.time())
         payload = {
@@ -78,25 +107,16 @@ async def send_push(
     Envía una push notification a un dispositivo via FCM HTTP v1.
     Retorna True si se envió correctamente, False si falló.
     """
-    from app.core.config import settings
-
-    sa_path = settings.FIREBASE_SERVICE_ACCOUNT_JSON
-    if not os.path.exists(sa_path):
-        logger.warning(f"FCM: archivo de cuenta de servicio no encontrado: {sa_path}")
+    sa = _load_service_account()
+    if not sa:
         return False
 
-    try:
-        with open(sa_path) as f:
-            sa = json.load(f)
-        project_id = sa.get("project_id")
-        if not project_id:
-            logger.warning("FCM: project_id no encontrado en service account")
-            return False
-    except Exception as e:
-        logger.warning(f"FCM: error leyendo service account: {e}")
+    project_id = sa.get("project_id")
+    if not project_id:
+        logger.warning("FCM: project_id no encontrado en service account")
         return False
 
-    access_token = await _get_access_token(sa_path)
+    access_token = await _get_access_token(sa)
     if not access_token:
         return False
 
