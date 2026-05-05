@@ -20,6 +20,7 @@ from app.models.bloqueo import BloqueoHorario
 from app.models.comprobante import Comprobante, EstadoComprobanteEnum
 from app.models.configuracion_pago import ConfiguracionPago
 from app.notificaciones import notif_reserva_confirmada, notif_reserva_rechazada
+from app.routers.websocket import notify_cliente
 from app.schemas.admin import (
     ReservaAdminResponse,
     PagoAdminResponse,
@@ -558,6 +559,13 @@ async def admin_verificar_pago(
             await db.commit()
     except Exception as e:
         logger.warning(f"Notificación al cliente no enviada (pago igual procesado): {e}")
+
+    # ── Notificar al cliente vía WebSocket (en tiempo real) ────
+    if reserva:
+        try:
+            await notify_cliente(reserva.cliente_id, {"tipo": "pago_actualizado", "accion": data.accion})
+        except Exception as e:
+            logger.warning(f"WS notify_cliente falló (no crítico): {e}")
 
     return {"mensaje": mensaje, "pago_id": str(pago_id), "accion": data.accion}
 
